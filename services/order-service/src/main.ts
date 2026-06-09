@@ -1,11 +1,12 @@
-import { createApp } from "./app.module.js";
+import { env } from "./config/env.js";
+import { createServer } from "./server.js";
 
 async function bootstrap() {
-  const app = await createApp();
+  const server = createServer();
 
-  const addr = await app.listen({ port: 3001, host: '0.0.0.0' });
+  await server.listen({ port: env.PORT, host: env.HOST });
 
-  console.log(`Server running at ${addr}`);
+  console.log(`🚀 Server running at: http://${env.HOST}:${env.PORT}`);
 }
 
 bootstrap().catch((err) => {

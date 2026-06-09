@@ -1,16 +1,11 @@
-import fastify from "fastify";
-import cors from "@fastify/cors";
-import { OrderModule } from "./order/order.module.js";
+import type { FastifyInstance } from "fastify";
 
-export const createApp = () => {
-  const app = fastify();
-
-  app.register(cors, {
-    origin: "*",
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+export const AppModule = (app: FastifyInstance) => {
+  app.get("/", async () => {
+    return { message: "Order Service is running" };
   });
 
-  app.register(OrderModule, { prefix: "/orders" });
-
-  return app;
+  app.get("/health", async () => {
+    return { status: "ok" };
+  });
 };
