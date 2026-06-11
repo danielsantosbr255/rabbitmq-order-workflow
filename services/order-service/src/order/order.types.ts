@@ -1,12 +1,12 @@
+import type { OrderEntity } from "./order.entity.js";
 import type { OrderPlacedEvent } from "./order.events.js";
-import type { Order } from "./order.schemas.js";
 
 export interface IOrdersRepository {
-  save(order: Order): Promise<Order>;
-  findById(id: string): Promise<Order | null>;
+  save(order: OrderEntity): Promise<OrderEntity>;
+  findById(id: string): Promise<OrderEntity | null>;
 }
 
 export interface IOrderPublisherPort {
-  publishOrderPlaced(event: OrderPlacedEvent): Promise<void>;
+  publishOrderPlaced(event: OrderPlacedEvent, correlationId?: string): Promise<void>;
   close(): Promise<void>;
 }

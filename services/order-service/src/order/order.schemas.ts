@@ -51,7 +51,7 @@ export const createOrderRouteSchema = {
   description: "Creates a new order with the provided items and customer ID.",
   body: createOrderBodySchema,
   response: {
-    202: createOrderResponseSchema,
+    201: createOrderResponseSchema,
     400: apiErrorSchema,
   },
 } satisfies FastifySchema;
@@ -69,7 +69,7 @@ export const getOrderRouteSchema = {
 
 // ── Inferred types ─────────────────────────────────────────────────
 
-export type Order = z.infer<typeof orderSchema>;
+export type OrderData = z.infer<typeof orderSchema>;
 export type OrderItem = z.infer<typeof orderItemSchema>;
 export type OrderStatus = z.infer<typeof orderStatuses>;
 export type CreateOrderBody = z.infer<typeof createOrderBodySchema>;
