@@ -15,20 +15,20 @@ export class RabbitOrderPublisher implements IOrderPublisherPort {
     });
   }
 
-  async publishOrderPlaced(event: OrderPlacedEvent) {
+  async publishOrderPlaced(event: OrderPlacedEvent, correlationId?: string) {
     await this.publisher.send(
       {
+        durable: true,
         exchange: EXCHANGE,
         routingKey: "order.placed",
-        durable: true,
+        contentType: "application/json",
+        messageId: event.eventId,
+        correlationId: correlationId ?? crypto.randomUUID(),
+        timestamp: Date.now(),
         headers: {
-          "x-retry-count": 0,
           "x-source-service": "order-service",
           "x-event-type": "order.placed",
         },
-        correlationId: event.eventId,
-        contentType: "application/json",
-        timestamp: Date.now(),
       },
       event,
     );
