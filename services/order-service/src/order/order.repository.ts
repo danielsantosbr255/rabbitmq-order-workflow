@@ -1,28 +1,18 @@
-import type { Order } from "./order.schemas.js";
+import { OrderEntity } from "./order.entity.js";
+import type { OrderData } from "./order.schemas.js";
 import type { IOrdersRepository } from "./order.types.js";
 
 export class InMemoryOrdersRepository implements IOrdersRepository {
-  private readonly orders = new Map<string, Order>();
+  private readonly orders = new Map<string, OrderData>();
 
-  async save(order: Order): Promise<Order> {
-    this.orders.set(order.id, {
-      ...order,
-      items: order.items.map(item => ({ ...item })),
-    });
-
+  async save(order: OrderEntity): Promise<OrderEntity> {
+    this.orders.set(order.id, order.toJSON());
     return order;
   }
 
-  async findById(id: string): Promise<Order | null> {
-    const order = this.orders.get(id);
-
-    if (!order) {
-      return null;
-    }
-
-    return {
-      ...order,
-      items: order.items.map(item => ({ ...item })),
-    };
+  async findById(id: string): Promise<OrderEntity | null> {
+    const data = this.orders.get(id);
+    if (!data) return null;
+    return OrderEntity.restore(data);
   }
 }

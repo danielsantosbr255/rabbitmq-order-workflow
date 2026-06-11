@@ -15,12 +15,12 @@ export const OrderModule: FastifyPluginAsync = async app => {
   api.addHook("onClose", async () => await publisher.close());
 
   api.post("/", { schema: createOrderRouteSchema }, async (request, reply) => {
-    const order = await service.create(request.body);
-    return reply.status(202).send({ orderId: order.id, status: order.status });
+    const order = await service.create(request.body, request.id);
+    return reply.status(201).send({ orderId: order.id, status: order.status });
   });
 
   api.get("/:id", { schema: getOrderRouteSchema }, async (request, reply) => {
     const order = await service.getById(request.params.id);
-    return reply.status(200).send(order);
+    return reply.status(200).send(order.toJSON());
   });
 };

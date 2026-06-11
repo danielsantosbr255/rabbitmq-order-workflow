@@ -1,5 +1,7 @@
+import { ResourceNotFoundError } from "../core/errors/app.errors.js";
+import { OrderEntity } from "./order.entity.js";
 import { buildOrderPlacedEvent } from "./order.events.js";
-import type { CreateOrderBody, Order, OrderStatus } from "./order.schemas.js";
+import type { CreateOrderBody } from "./order.schemas.js";
 import type { IOrderPublisherPort, IOrdersRepository } from "./order.types.js";
 
 export class OrdersService {
@@ -8,29 +10,20 @@ export class OrdersService {
     private readonly publisher: IOrderPublisherPort,
   ) {}
 
-  async create(input: CreateOrderBody): Promise<Order> {
-    const now = new Date().toISOString();
-
-    const order: Order = {
-      id: crypto.randomUUID(),
-      customerId: input.customerId,
-      items: input.items,
-      status: "PENDING" satisfies OrderStatus,
-      createdAt: now,
-      updatedAt: now,
-    };
+  async create(input: CreateOrderBody, correlationId?: string): Promise<OrderEntity> {
+    const order = OrderEntity.create(input);
 
     await this.repository.save(order);
-    await this.publisher.publishOrderPlaced(buildOrderPlacedEvent(order));
+    await this.publisher.publishOrderPlaced(buildOrderPlacedEvent(order), correlationId);
 
     return order;
   }
 
-  async getById(id: string): Promise<Order> {
+  async getById(id: string): Promise<OrderEntity> {
     const order = await this.repository.findById(id);
 
     if (!order) {
-      throw Object.assign(new Error(`Order ${id} not found`), { statusCode: 404 });
+      throw new ResourceNotFoundError("Order", id);
     }
 
     return order;

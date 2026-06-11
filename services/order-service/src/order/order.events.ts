@@ -1,5 +1,5 @@
 import { z } from "zod/v4";
-import type { Order } from "./order.schemas.js";
+import type { OrderEntity } from "./order.entity.js";
 import { orderItemSchema } from "./order.schemas.js";
 
 export const orderPlacedEventSchema = z.object({
@@ -17,7 +17,7 @@ export const orderPlacedEventSchema = z.object({
 
 export type OrderPlacedEvent = z.infer<typeof orderPlacedEventSchema>;
 
-export function buildOrderPlacedEvent(order: Order): OrderPlacedEvent {
+export function buildOrderPlacedEvent(order: OrderEntity): OrderPlacedEvent {
   return {
     eventId: crypto.randomUUID(),
     eventType: "order.placed",
