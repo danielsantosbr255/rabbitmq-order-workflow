@@ -1,5 +1,4 @@
 import cors from "@fastify/cors";
-import sensible from "@fastify/sensible";
 import fastifySwagger from "@fastify/swagger";
 import fastifySwaggerUi from "@fastify/swagger-ui";
 import fastify from "fastify";
@@ -26,7 +25,6 @@ export const buildApp = async () => {
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
 
-  await app.register(sensible);
   await app.register(errorHandlerPlugin);
 
   await app.register(cors, {

@@ -1,5 +1,6 @@
 import type { FastifyError } from "fastify";
 import fp from "fastify-plugin";
+import { DomainError, ResourceNotFoundError } from "../core/errors/app.errors.js";
 
 export default fp(
   async function errorHandlerPlugin(app) {
@@ -11,6 +12,20 @@ export default fp(
         return reply.status(400).send({
           statusCode: 400,
           error: "Validation Error",
+          message: error.message,
+        });
+      }
+
+      if (error instanceof DomainError) {
+        let statusCode = 400; // Default for domain errors (Bad Request)
+
+        if (error instanceof ResourceNotFoundError) {
+          statusCode = 404; // Not Found
+        }
+
+        return reply.status(statusCode).send({
+          statusCode,
+          error: error.name,
           message: error.message,
         });
       }
