@@ -1,24 +1,42 @@
-import fastify from "fastify";
-import cors from "@fastify/cors";
-import { OrderModule } from "./order/order.module.js";
-import { AppModule } from "./app.module.js";
-import { env } from "./config/env.js";
+import fastify from 'fastify'
+import cors from '@fastify/cors'
+import sensible from '@fastify/sensible'
+import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod'
+import { env } from './config/env.js'
+import errorHandlerPlugin from './plugins/error-handler.plugin.js'
+import rabbitmqPlugin from './infra/messaging/rabbitmq.plugin.js'
+import { OrderModule } from './order/orders.module.js'
 
-export const buildApp = () => {
+export const buildApp = async () => {
   const app = fastify({
-    logger: {
-      level: env.NODE_ENV === "production" ? "info" : "debug",
-      transport: { target: "pino-pretty", options: { singleLine: true, colorize: true } },
-    },
-  });
+    logger:
+      env.NODE_ENV === 'production'
+        ? { level: 'info' }
+        : {
+          level: 'debug',
+          transport: {
+            target: 'pino-pretty',
+            options: { singleLine: true, colorize: true },
+          },
+        },
+  })
 
-  app.register(cors, {
-    origin: "*",
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  });
+  app.setValidatorCompiler(validatorCompiler)
+  app.setSerializerCompiler(serializerCompiler)
 
-  app.register(AppModule, { prefix: "/" });
-  app.register(OrderModule, { prefix: "/orders" });
+  await app.register(sensible)
+  await app.register(errorHandlerPlugin)
 
-  return app;
-};
+  await app.register(cors, {
+    origin: env.NODE_ENV === 'production' ? false : '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  })
+
+  await app.register(rabbitmqPlugin)
+
+  app.get('/health', async () => ({ status: 'ok' }))
+
+  await app.register(OrderModule, { prefix: '/orders' })
+
+  return app
+}
