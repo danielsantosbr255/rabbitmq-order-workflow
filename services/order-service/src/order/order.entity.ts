@@ -21,12 +21,24 @@ export class OrderEntity {
   }
 
   // Getters
-  get id() { return this._id; }
-  get customerId() { return this._customerId; }
-  get items() { return this._items; }
-  get status() { return this._status; }
-  get createdAt() { return this._createdAt; }
-  get updatedAt() { return this._updatedAt; }
+  get id() {
+    return this._id;
+  }
+  get customerId() {
+    return this._customerId;
+  }
+  get items() {
+    return this._items;
+  }
+  get status() {
+    return this._status;
+  }
+  get createdAt() {
+    return this._createdAt;
+  }
+  get updatedAt() {
+    return this._updatedAt;
+  }
 
   /**
    * Cria um novo pedido com estado inicial PENDING.
