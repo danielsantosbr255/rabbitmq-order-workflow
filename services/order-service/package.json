@@ -17,10 +17,11 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "packageManager": "pnpm@11.5.3",
   "devEngines": {
     "packageManager": {
       "name": "pnpm",
-      "version": "^11.1.0",
+      "version": "11.5.3",
       "onFail": "download"
     }
   },
