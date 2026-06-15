@@ -16,5 +16,23 @@ services:
       RABBITMQ_DEFAULT_PASS: guest
     restart: unless-stopped
 
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: orders
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-U", "postgres" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    restart: unless-stopped
+
 volumes:
   rabbitmq_data:
+  postgres_data:

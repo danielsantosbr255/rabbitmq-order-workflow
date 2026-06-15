@@ -4,6 +4,7 @@ import fastifySwaggerUi from "@fastify/swagger-ui";
 import fastify from "fastify";
 import { jsonSchemaTransform, serializerCompiler, validatorCompiler } from "fastify-type-provider-zod";
 import { env } from "./config/env.js";
+import databasePlugin from "./infra/database/drizzle.plugin.js";
 import rabbitmqPlugin from "./infra/messaging/rabbitmq.plugin.js";
 import { OrderModule } from "./order/order.module.js";
 import errorHandlerPlugin from "./plugins/error-handler.plugin.js";
@@ -32,6 +33,7 @@ export const buildApp = async () => {
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   });
 
+  await app.register(databasePlugin);
   await app.register(rabbitmqPlugin);
 
   await app.register(fastifySwagger, {

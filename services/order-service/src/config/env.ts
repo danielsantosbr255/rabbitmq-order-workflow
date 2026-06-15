@@ -9,7 +9,8 @@ const envSchema = z.object({
   PORT: z.coerce.number().default(3001),
   HOST: z.string().default("0.0.0.0"),
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
-  RABBITMQ_URL: z.string().default("amqp://guest:guest@localhost:5672"),
+  RABBITMQ_URL: z.url().default("amqp://guest:guest@localhost:5672"),
+  DATABASE_URL: z.url().default("postgres://postgres:postgres@localhost:5432/orders"),
 });
 
 export type EnvSchemaType = z.infer<typeof envSchema>;
