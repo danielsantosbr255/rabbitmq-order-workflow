@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { OrderEntity } from "./order.entity.js";
-import { InMemoryOrdersRepository } from "./order.repository.js";
 import { OrdersService } from "./order.service.js";
 import type { IOrderPublisherPort } from "./order.types.js";
+import { InMemoryOrdersRepository } from "./repositories/order.repository.in-memory.js";
 
 describe("OrdersService", () => {
   it("should create an order, save it, and publish an event", async () => {
