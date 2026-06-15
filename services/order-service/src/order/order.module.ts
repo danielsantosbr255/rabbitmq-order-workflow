@@ -1,12 +1,12 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { RabbitOrderPublisher } from "../infra/messaging/rabbitmq.publisher.js";
-import { InMemoryOrdersRepository } from "./order.repository.js";
 import { createOrderRouteSchema, getOrderRouteSchema } from "./order.schemas.js";
 import { OrdersService } from "./order.service.js";
+import { DrizzleOrdersRepository } from "./repositories/order.repository.drizzle.js";
 
 export const OrderModule: FastifyPluginAsync = async app => {
-  const repository = new InMemoryOrdersRepository();
+  const repository = new DrizzleOrdersRepository(app.db);
   const publisher = new RabbitOrderPublisher(app.rabbit);
   const service = new OrdersService(repository, publisher);
 

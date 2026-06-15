@@ -1,6 +1,6 @@
-import { OrderEntity } from "./order.entity.js";
-import type { OrderData } from "./order.schemas.js";
-import type { IOrdersRepository } from "./order.types.js";
+import { OrderEntity } from "../order.entity.js";
+import type { OrderData } from "../order.schemas.js";
+import type { IOrdersRepository } from "../order.types.js";
 
 export class InMemoryOrdersRepository implements IOrdersRepository {
   private readonly orders = new Map<string, OrderData>();
