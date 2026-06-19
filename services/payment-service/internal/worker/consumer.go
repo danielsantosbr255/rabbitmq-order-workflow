@@ -12,8 +12,6 @@ import (
 	"github.com/danielsantosbr255/payment-service/internal/entity"
 )
 
-// ── Topology constants ────────────────────────────────────────────────────────
-
 const (
 	// Main exchange declared by the order-service (must match exactly).
 	exchangeOrders = "orders"
@@ -37,19 +35,14 @@ const (
 	rkProcessed   = "payment.processed"
 )
 
-// ── Consumer ──────────────────────────────────────────────────────────────────
-
-// Consumer manages the AMQP connection lifecycle, queue topology, and concurrent
-// message dispatch. It deliberately knows nothing about business logic — it calls
-// Handler.Handle and acts on the returned HandleResult.
 type Consumer struct {
 	conn        *amqp.Connection
 	handler     *Handler
 	prefetch    int
 	maxRetries  int
+	pubMu       sync.Mutex
 }
 
-// NewConsumer constructs a Consumer.
 func NewConsumer(conn *amqp.Connection, handler *Handler, prefetch, maxRetries int) *Consumer {
 	return &Consumer{
 		conn:       conn,
@@ -59,9 +52,6 @@ func NewConsumer(conn *amqp.Connection, handler *Handler, prefetch, maxRetries i
 	}
 }
 
-// Run sets up the full RabbitMQ topology, starts consuming messages, and blocks
-// until ctx is cancelled (graceful shutdown signal).
-// The WaitGroup wg must be Done-d by the caller after Run returns.
 func (c *Consumer) Run(ctx context.Context, wg *sync.WaitGroup) error {
 	ch, err := c.conn.Channel()
 	if err != nil {
@@ -115,8 +105,6 @@ func (c *Consumer) Run(ctx context.Context, wg *sync.WaitGroup) error {
 	return nil
 }
 
-// dispatch is called in its own goroutine for each delivery.
-// It calls the handler and translates the HandleResult into AMQP actions.
 func (c *Consumer) dispatch(ctx context.Context, pubCh *amqp.Channel, d amqp.Delivery) {
 	orderID := extractOrderID(d.Body)
 	retryCount := extractDeathCount(d.Headers)
@@ -128,8 +116,14 @@ func (c *Consumer) dispatch(ctx context.Context, pubCh *amqp.Channel, d amqp.Del
 	case result.Fatal:
 		// Poison pill or unrecoverable error — park in DLQ and ack the original.
 		logger.Error("fatal error — routing to DLQ")
-		c.publishToDLQ(pubCh, d)
-		_ = d.Ack(false)
+		if err := c.publishToDLQ(pubCh, d); err != nil {
+			logger.Error("failed to publish to DLQ, nacking to requeue", "error", err)
+			_ = d.Nack(false, true)
+			return
+		}
+		if err := d.Ack(false); err != nil {
+			logger.Error("failed to ack message after fatal error", "error", err)
+		}
 
 	case result.Retry:
 		nextRetry := retryCount + 1
@@ -138,43 +132,52 @@ func (c *Consumer) dispatch(ctx context.Context, pubCh *amqp.Channel, d amqp.Del
 			logger.Error("max retries exceeded — routing to DLQ",
 				"max_retries", c.maxRetries,
 			)
-			c.publishToDLQ(pubCh, d)
-			_ = d.Ack(false)
+			if err := c.publishToDLQ(pubCh, d); err != nil {
+				logger.Error("failed to publish to DLQ, nacking to requeue", "error", err)
+				_ = d.Nack(false, true)
+				return
+			}
+			if err := d.Ack(false); err != nil {
+				logger.Error("failed to ack message after max retries", "error", err)
+			}
 			return
 		}
 		// Route to the appropriate wait queue via the retry exchange.
 		rk := fmt.Sprintf("retry.%d", nextRetry)
 		logger.Warn("transient error — scheduling retry", "routing_key", rk, "next_attempt", nextRetry)
-		c.publishToRetryExchange(pubCh, d, rk)
-		_ = d.Ack(false) // Ack original; a copy is now in the wait queue.
+		if err := c.publishToRetryExchange(pubCh, d, rk); err != nil {
+			logger.Error("failed to publish to retry exchange, nacking to requeue", "error", err)
+			_ = d.Nack(false, true)
+			return
+		}
+		if err := d.Ack(false); err != nil {
+			logger.Error("failed to ack message after scheduling retry", "error", err)
+		}
 
 	case result.Ack:
 		// Success or idempotent skip.
 		if result.Event != nil {
-			c.publishPaymentProcessed(pubCh, result.Event, d.CorrelationId)
+			if err := c.publishPaymentProcessed(pubCh, result.Event, d.CorrelationId); err != nil {
+				logger.Error("failed to publish payment processed event, nacking to requeue", "error", err)
+				_ = d.Nack(false, true)
+				return
+			}
 		}
-		_ = d.Ack(false)
+		if err := d.Ack(false); err != nil {
+			logger.Error("failed to ack message after success", "error", err)
+		}
 	}
 }
 
-// ── Topology Declaration ──────────────────────────────────────────────────────
-
-// declareTopology idempotently declares all exchanges, queues, and bindings
-// required by the payment worker. Safe to call on every startup.
 func (c *Consumer) declareTopology(ch *amqp.Channel) error {
-	// Main exchange — declared by order-service too, idempotent (must match args).
 	if err := ch.ExchangeDeclare(exchangeOrders, amqp.ExchangeTopic, true, false, false, false, nil); err != nil {
 		return fmt.Errorf("declare exchange %q: %w", exchangeOrders, err)
 	}
 
-	// Retry exchange — routes to the correct TTL wait queue.
 	if err := ch.ExchangeDeclare(exchangeRetry, amqp.ExchangeTopic, true, false, false, false, nil); err != nil {
 		return fmt.Errorf("declare exchange %q: %w", exchangeRetry, err)
 	}
 
-	// Main queue — when a message is nacked(requeue=false) by a consumer,
-	// it is sent to exchangeRetry. But we use Ack+republish pattern instead,
-	// so x-dead-letter-exchange is here only as a safety net.
 	mainArgs := amqp.Table{
 		"x-dead-letter-exchange":     exchangeRetry,
 		"x-dead-letter-routing-key":  "retry.1",
@@ -186,8 +189,6 @@ func (c *Consumer) declareTopology(ch *amqp.Channel) error {
 		return fmt.Errorf("bind %q to %q: %w", queueMain, exchangeOrders, err)
 	}
 
-	// TTL wait queues — messages sit here, expire, then return to exchangeOrders
-	// with routing key order.placed so they re-enter the main queue.
 	waitQueues := []struct {
 		name string
 		ttl  int32
@@ -197,6 +198,7 @@ func (c *Consumer) declareTopology(ch *amqp.Channel) error {
 		{queueWait15s, 15_000, "retry.2"},
 		{queueWait45s, 45_000, "retry.3"},
 	}
+
 	for _, wq := range waitQueues {
 		args := amqp.Table{
 			"x-message-ttl":              wq.ttl,
@@ -211,7 +213,6 @@ func (c *Consumer) declareTopology(ch *amqp.Channel) error {
 		}
 	}
 
-	// DLQ — terminal queue, no bindings back to any exchange.
 	if _, err := ch.QueueDeclare(queueDLQ, true, false, false, false, nil); err != nil {
 		return fmt.Errorf("declare DLQ %q: %w", queueDLQ, err)
 	}
@@ -224,12 +225,15 @@ func (c *Consumer) declareTopology(ch *amqp.Channel) error {
 
 // publishPaymentProcessed publishes the PaymentProcessedEvent back to the main
 // exchange so downstream services (e.g. notification-service) can react.
-func (c *Consumer) publishPaymentProcessed(ch *amqp.Channel, event *entity.PaymentProcessedEvent, correlationID string) {
+func (c *Consumer) publishPaymentProcessed(ch *amqp.Channel, event *entity.PaymentProcessedEvent, correlationID string) error {
 	body, err := json.Marshal(event)
 	if err != nil {
 		slog.Error("failed to marshal PaymentProcessedEvent", "error", err)
-		return
+		return fmt.Errorf("marshal event: %w", err)
 	}
+
+	c.pubMu.Lock()
+	defer c.pubMu.Unlock()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5_000_000_000) // 5s
 	defer cancel()
@@ -238,11 +242,11 @@ func (c *Consumer) publishPaymentProcessed(ch *amqp.Channel, event *entity.Payme
 		exchangeOrders, rkProcessed,
 		false, false,
 		amqp.Publishing{
-			ContentType:  "application/json",
-			DeliveryMode: amqp.Persistent,
-			MessageId:    event.EventID,
+			ContentType:   "application/json",
+			DeliveryMode:  amqp.Persistent,
+			MessageId:     event.EventID,
 			CorrelationId: correlationID,
-			Body:         body,
+			Body:          body,
 			Headers: amqp.Table{
 				"x-source-service": "payment-service",
 				"x-event-type":     "payment.processed",
@@ -251,13 +255,18 @@ func (c *Consumer) publishPaymentProcessed(ch *amqp.Channel, event *entity.Payme
 	)
 	if err != nil {
 		slog.Error("failed to publish payment.processed", "error", err, "order_id", event.Payload.OrderID)
+		return fmt.Errorf("publish event: %w", err)
 	}
+	return nil
 }
 
 // publishToRetryExchange republishes the delivery body to the retry exchange
 // with the routing key matching the correct TTL wait queue (retry.1/2/3).
 // The original message is Ack-ed separately by the caller after this returns.
-func (c *Consumer) publishToRetryExchange(ch *amqp.Channel, d amqp.Delivery, routingKey string) {
+func (c *Consumer) publishToRetryExchange(ch *amqp.Channel, d amqp.Delivery, routingKey string) error {
+	c.pubMu.Lock()
+	defer c.pubMu.Unlock()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5_000_000_000)
 	defer cancel()
 
@@ -275,12 +284,17 @@ func (c *Consumer) publishToRetryExchange(ch *amqp.Channel, d amqp.Delivery, rou
 	)
 	if err != nil {
 		slog.Error("failed to publish to retry exchange", "error", err, "routing_key", routingKey)
+		return fmt.Errorf("publish retry: %w", err)
 	}
+	return nil
 }
 
 // publishToDLQ directly publishes a copy of the delivery to the DLQ queue
 // using the default exchange (empty string) so no binding is required.
-func (c *Consumer) publishToDLQ(ch *amqp.Channel, d amqp.Delivery) {
+func (c *Consumer) publishToDLQ(ch *amqp.Channel, d amqp.Delivery) error {
+	c.pubMu.Lock()
+	defer c.pubMu.Unlock()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 5_000_000_000)
 	defer cancel()
 
@@ -288,16 +302,18 @@ func (c *Consumer) publishToDLQ(ch *amqp.Channel, d amqp.Delivery) {
 		"", queueDLQ, // default exchange, routed directly to queue by name
 		false, false,
 		amqp.Publishing{
-			ContentType:  d.ContentType,
-			DeliveryMode: amqp.Persistent,
-			MessageId:    d.MessageId,
-			Body:         d.Body,
-			Headers:      d.Headers,
+			ContentType:   d.ContentType,
+			DeliveryMode:  amqp.Persistent,
+			MessageId:     d.MessageId,
+			Body:          d.Body,
+			Headers:       d.Headers,
 		},
 	)
 	if err != nil {
 		slog.Error("failed to publish to DLQ", "error", err)
+		return fmt.Errorf("publish dlq: %w", err)
 	}
+	return nil
 }
 
 // ── Header Helpers ────────────────────────────────────────────────────────────
