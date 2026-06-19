@@ -1,25 +1,18 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { OrderEntity } from "./order.entity.js";
 import { OrdersService } from "./order.service.js";
-import type { IOrderPublisherPort } from "./order.types.js";
 import { InMemoryOrdersRepository } from "./repositories/order.repository.in-memory.js";
 
 describe("OrdersService", () => {
-  it("should create an order, save it, and publish an event", async () => {
+  it("should create an order, save it, and save an outbox event", async () => {
     const fakeRepo = new InMemoryOrdersRepository();
-    const mockPublisher: IOrderPublisherPort = {
-      publishOrderPlaced: vi.fn(async () => {}),
-      close: vi.fn(),
-    };
-
-    const service = new OrdersService(fakeRepo, mockPublisher);
+    const service = new OrdersService(fakeRepo);
     const input = {
       customerId: crypto.randomUUID(),
       items: [{ productId: crypto.randomUUID(), quantity: 2 }],
     };
-    const correlationId = crypto.randomUUID();
 
-    const order = await service.create(input, correlationId);
+    const order = await service.create(input);
 
     expect(order.id).toBeDefined();
     expect(order.status).toBe("PENDING");
@@ -29,10 +22,19 @@ describe("OrdersService", () => {
     const savedOrder = await fakeRepo.findById(order.id);
     expect(savedOrder).toEqual(order);
 
-    expect(mockPublisher.publishOrderPlaced).toHaveBeenCalledWith(
-      expect.objectContaining({ eventType: "order.placed", aggregateId: order.id }),
-      correlationId,
-    );
+    expect(fakeRepo.outbox).toHaveLength(1);
+    expect(fakeRepo.outbox[0]).toMatchObject({
+      aggregateId: order.id,
+      eventType: "order.placed",
+      payload: expect.objectContaining({
+        eventId: expect.any(String),
+        payload: {
+          orderId: order.id,
+          customerId: order.customerId,
+          items: order.items,
+        },
+      }),
+    });
   });
 
   it("should return an order if found by id", async () => {
@@ -42,9 +44,8 @@ describe("OrdersService", () => {
       items: [],
     });
     await fakeRepo.save(order);
-    const mockPublisher = {} as IOrderPublisherPort;
 
-    const service = new OrdersService(fakeRepo, mockPublisher);
+    const service = new OrdersService(fakeRepo);
     const result = await service.getById(order.id);
 
     expect(result).toEqual(order);
@@ -52,9 +53,7 @@ describe("OrdersService", () => {
 
   it("should throw a 404 error if order is not found", async () => {
     const fakeRepo = new InMemoryOrdersRepository();
-    const mockPublisher = {} as IOrderPublisherPort;
-
-    const service = new OrdersService(fakeRepo, mockPublisher);
+    const service = new OrdersService(fakeRepo);
 
     await expect(service.getById("123")).rejects.toThrow("Order with identifier '123' was not found.");
   });

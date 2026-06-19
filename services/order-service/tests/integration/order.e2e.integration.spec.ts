@@ -60,6 +60,17 @@ describe("OrderService E2E Integration (Testcontainers)", () => {
         created_at TIMESTAMP WITH TIME ZONE NOT NULL,
         updated_at TIMESTAMP WITH TIME ZONE NOT NULL
       );
+
+      CREATE TABLE outbox (
+        id UUID PRIMARY KEY,
+        aggregate_type VARCHAR(50) NOT NULL,
+        aggregate_id VARCHAR(100) NOT NULL,
+        event_type VARCHAR(100) NOT NULL,
+        payload JSONB NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        processed BOOLEAN DEFAULT FALSE NOT NULL,
+        processed_at TIMESTAMP WITH TIME ZONE
+      );
     `);
 
     const db = drizzle(pgClient, { schema });
@@ -113,7 +124,7 @@ describe("OrderService E2E Integration (Testcontainers)", () => {
       {
         queue: "test-order-placed",
         queueOptions: { autoDelete: true, exclusive: true },
-        exchanges: [{ exchange: EXCHANGE_NAME, type: "topic" }],
+        exchanges: [{ exchange: EXCHANGE_NAME, type: "topic", durable: true }],
         queueBindings: [{ exchange: EXCHANGE_NAME, routingKey: ROUTING_KEY }],
       },
       async msg => {
