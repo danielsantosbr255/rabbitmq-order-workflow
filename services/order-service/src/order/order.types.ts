@@ -1,8 +1,13 @@
 import type { OrderEntity } from "./order.entity.js";
 import type { OrderPlacedEvent } from "./order.events.js";
 
+export interface OutboxEventInput {
+  eventType: string;
+  payload: unknown;
+}
+
 export interface IOrdersRepository {
-  save(order: OrderEntity): Promise<OrderEntity>;
+  save(order: OrderEntity, outboxEvent?: OutboxEventInput): Promise<OrderEntity>;
   findById(id: string): Promise<OrderEntity | null>;
 }
 

@@ -2,32 +2,44 @@ import { eq } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import * as schema from "../order.db-schema.js";
 import { OrderEntity } from "../order.entity.js";
-import type { IOrdersRepository } from "../order.types.js";
+import type { IOrdersRepository, OutboxEventInput } from "../order.types.js";
 
 export class DrizzleOrdersRepository implements IOrdersRepository {
   constructor(private readonly db: NodePgDatabase<typeof schema>) {}
 
-  async save(order: OrderEntity): Promise<OrderEntity> {
+  async save(order: OrderEntity, outboxEvent?: OutboxEventInput): Promise<OrderEntity> {
     const data = order.toJSON();
 
-    await this.db
-      .insert(schema.orders)
-      .values({
-        id: data.id,
-        customerId: data.customerId,
-        status: data.status,
-        items: data.items,
-        createdAt: data.createdAt,
-        updatedAt: data.updatedAt,
-      })
-      .onConflictDoUpdate({
-        target: schema.orders.id,
-        set: {
+    await this.db.transaction(async tx => {
+      await tx
+        .insert(schema.orders)
+        .values({
+          id: data.id,
+          customerId: data.customerId,
           status: data.status,
           items: data.items,
+          createdAt: data.createdAt,
           updatedAt: data.updatedAt,
-        },
-      });
+        })
+        .onConflictDoUpdate({
+          target: schema.orders.id,
+          set: {
+            status: data.status,
+            items: data.items,
+            updatedAt: data.updatedAt,
+          },
+        });
+
+      if (outboxEvent) {
+        await tx.insert(schema.outbox).values({
+          id: crypto.randomUUID(),
+          aggregateType: "order",
+          aggregateId: data.id,
+          eventType: outboxEvent.eventType,
+          payload: outboxEvent.payload,
+        });
+      }
+    });
 
     return order;
   }

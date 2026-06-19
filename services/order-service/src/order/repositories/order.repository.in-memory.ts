@@ -1,12 +1,16 @@
 import { OrderEntity } from "../order.entity.js";
 import type { OrderData } from "../order.schemas.js";
-import type { IOrdersRepository } from "../order.types.js";
+import type { IOrdersRepository, OutboxEventInput } from "../order.types.js";
 
 export class InMemoryOrdersRepository implements IOrdersRepository {
   private readonly orders = new Map<string, OrderData>();
+  public readonly outbox: (OutboxEventInput & { aggregateId: string })[] = [];
 
-  async save(order: OrderEntity): Promise<OrderEntity> {
+  async save(order: OrderEntity, outboxEvent?: OutboxEventInput): Promise<OrderEntity> {
     this.orders.set(order.id, order.toJSON());
+    if (outboxEvent) {
+      this.outbox.push({ ...outboxEvent, aggregateId: order.id });
+    }
     return order;
   }
 
