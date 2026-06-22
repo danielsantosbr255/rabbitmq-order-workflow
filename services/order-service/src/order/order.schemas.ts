@@ -3,7 +3,7 @@ import { z } from "zod/v4";
 
 // ── Shared primitives ──────────────────────────────────────────────
 
-export const orderStatuses = z.enum(["PENDING", "PROCESSING", "COMPLETED", "CANCELLED"]);
+export const orderStatuses = z.enum(["PENDING", "PAID", "SHIPPED", "DELIVERED", "CANCELED"]);
 
 export const orderItemSchema = z.object({
   productId: z.uuid(),

@@ -20,7 +20,6 @@ export class OrderEntity {
     this._updatedAt = data.updatedAt;
   }
 
-  // Getters
   get id() {
     return this._id;
   }
@@ -40,9 +39,6 @@ export class OrderEntity {
     return this._updatedAt;
   }
 
-  /**
-   * Cria um novo pedido com estado inicial PENDING.
-   */
   static create(input: CreateOrderInput): OrderEntity {
     const now = new Date().toISOString();
     return new OrderEntity({
@@ -55,42 +51,43 @@ export class OrderEntity {
     });
   }
 
-  /**
-   * Reconstrói a entidade a partir do banco de dados.
-   */
   static restore(data: OrderData): OrderEntity {
     return new OrderEntity(data);
   }
 
-  // --- State Machine ---
-
-  markAsProcessing(): void {
+  markAsPaid(): void {
+    if (this._status === "PAID" || this._status === "SHIPPED" || this._status === "DELIVERED") return;
     if (this._status !== "PENDING") {
-      throw new InvalidStateTransitionError(this._status, "PROCESSING");
+      throw new InvalidStateTransitionError(this._status, "PAID");
     }
-    this._status = "PROCESSING";
+    this._status = "PAID";
     this._updatedAt = new Date().toISOString();
   }
 
-  complete(): void {
-    if (this._status !== "PROCESSING") {
-      throw new InvalidStateTransitionError(this._status, "COMPLETED");
+  markAsShipped(): void {
+    if (this._status === "SHIPPED" || this._status === "DELIVERED") return;
+    if (this._status !== "PAID") {
+      throw new InvalidStateTransitionError(this._status, "SHIPPED");
     }
-    this._status = "COMPLETED";
+    this._status = "SHIPPED";
+    this._updatedAt = new Date().toISOString();
+  }
+
+  markAsDelivered(): void {
+    if (this._status === "DELIVERED") return;
+    if (this._status !== "SHIPPED") {
+      throw new InvalidStateTransitionError(this._status, "DELIVERED");
+    }
+    this._status = "DELIVERED";
     this._updatedAt = new Date().toISOString();
   }
 
   cancel(): void {
-    if (this._status === "COMPLETED" || this._status === "CANCELLED") {
-      throw new InvalidStateTransitionError(this._status, "CANCELLED");
-    }
-    this._status = "CANCELLED";
+    if (this._status === "CANCELED" || this._status === "DELIVERED") return;
+    this._status = "CANCELED";
     this._updatedAt = new Date().toISOString();
   }
 
-  /**
-   * Exporta os dados da entidade para um formato puro (DTO)
-   */
   toJSON(): OrderData {
     return {
       id: this._id,
