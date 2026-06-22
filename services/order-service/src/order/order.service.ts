@@ -14,7 +14,6 @@ export class OrdersService {
       eventType: "order.placed",
       payload: buildOrderPlacedEvent(order),
     });
-
     return order;
   }
 
@@ -22,5 +21,23 @@ export class OrdersService {
     const order = await this.repository.findById(id);
     if (!order) throw new ResourceNotFoundError("Order", id);
     return order;
+  }
+
+  async processPaymentResult(id: string, status: "APPROVED" | "REJECTED"): Promise<OrderEntity> {
+    const order = await this.getById(id);
+    status === "APPROVED" ? order.markAsPaid() : order.cancel();
+    return this.repository.save(order);
+  }
+
+  async processShippingResult(id: string, status: "COMPLETED" | "FAILED"): Promise<OrderEntity> {
+    const order = await this.getById(id);
+    status === "COMPLETED" ? order.markAsShipped() : order.cancel();
+    return this.repository.save(order);
+  }
+
+  async compensateOrder(id: string): Promise<OrderEntity> {
+    const order = await this.getById(id);
+    order.cancel();
+    return this.repository.save(order);
   }
 }
