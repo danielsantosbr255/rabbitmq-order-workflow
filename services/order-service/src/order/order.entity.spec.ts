@@ -16,41 +16,61 @@ describe("OrderEntity", () => {
     expect(order.status).toBe("PENDING");
   });
 
-  it("should transition from PENDING to PROCESSING", () => {
+  it("should transition from PENDING to PAID", () => {
     const order = OrderEntity.create({ customerId: crypto.randomUUID(), items: [] });
-    order.markAsProcessing();
-    expect(order.status).toBe("PROCESSING");
+    order.markAsPaid();
+    expect(order.status).toBe("PAID");
   });
 
-  it("should transition from PROCESSING to COMPLETED", () => {
+  it("should transition from PAID to SHIPPED", () => {
     const order = OrderEntity.create({ customerId: crypto.randomUUID(), items: [] });
-    order.markAsProcessing();
-    order.complete();
-    expect(order.status).toBe("COMPLETED");
+    order.markAsPaid();
+    order.markAsShipped();
+    expect(order.status).toBe("SHIPPED");
   });
 
-  it("should throw error if trying to complete a PENDING order", () => {
+  it("should transition from SHIPPED to DELIVERED", () => {
     const order = OrderEntity.create({ customerId: crypto.randomUUID(), items: [] });
-    expect(() => order.complete()).toThrow("Cannot transition from PENDING to COMPLETED");
+    order.markAsPaid();
+    order.markAsShipped();
+    order.markAsDelivered();
+    expect(order.status).toBe("DELIVERED");
+  });
+
+  it("should throw error if trying to complete (ship) a PENDING order", () => {
+    const order = OrderEntity.create({ customerId: crypto.randomUUID(), items: [] });
+    expect(() => order.markAsShipped()).toThrow("Cannot transition from PENDING to SHIPPED");
   });
 
   it("should allow cancelling a PENDING order", () => {
     const order = OrderEntity.create({ customerId: crypto.randomUUID(), items: [] });
     order.cancel();
-    expect(order.status).toBe("CANCELLED");
+    expect(order.status).toBe("CANCELED");
   });
 
-  it("should allow cancelling a PROCESSING order", () => {
+  it("should allow cancelling a PAID order", () => {
     const order = OrderEntity.create({ customerId: crypto.randomUUID(), items: [] });
-    order.markAsProcessing();
+    order.markAsPaid();
     order.cancel();
-    expect(order.status).toBe("CANCELLED");
+    expect(order.status).toBe("CANCELED");
   });
 
-  it("should throw error if trying to cancel a COMPLETED order", () => {
+  it("should be idempotent when cancelling a CANCELED order", () => {
     const order = OrderEntity.create({ customerId: crypto.randomUUID(), items: [] });
-    order.markAsProcessing();
-    order.complete();
-    expect(() => order.cancel()).toThrow("Cannot transition from COMPLETED to CANCELLED");
+    order.cancel();
+    expect(order.status).toBe("CANCELED");
+    // Chamada idempotente, não deve lançar erro
+    order.cancel();
+    expect(order.status).toBe("CANCELED");
+  });
+
+  it("should be idempotent when cancelling a DELIVERED order", () => {
+    const order = OrderEntity.create({ customerId: crypto.randomUUID(), items: [] });
+    order.markAsPaid();
+    order.markAsShipped();
+    order.markAsDelivered();
+    expect(order.status).toBe("DELIVERED");
+    order.cancel();
+    expect(order.status).toBe("DELIVERED");
   });
 });
