@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { ZodTypeProvider } from "fastify-type-provider-zod";
 import { OutboxRelay } from "../infra/messaging/outbox.relay.js";
+import { RabbitOrderConsumer } from "../infra/messaging/rabbitmq.consumer.js";
 import { RabbitOrderPublisher } from "../infra/messaging/rabbitmq.publisher.js";
 import { createOrderRouteSchema, getOrderRouteSchema } from "./order.schemas.js";
 import { OrdersService } from "./order.service.js";
@@ -11,6 +12,7 @@ export const OrderModule: FastifyPluginAsync = async app => {
   const publisher = new RabbitOrderPublisher(app.rabbit);
   const service = new OrdersService(repository);
   const outboxRelay = new OutboxRelay(app.db, publisher);
+  const consumer = new RabbitOrderConsumer(app.rabbit, service);
 
   const api = app.withTypeProvider<ZodTypeProvider>();
 
@@ -20,6 +22,7 @@ export const OrderModule: FastifyPluginAsync = async app => {
 
   api.addHook("onClose", async () => {
     outboxRelay.stop();
+    await consumer.close();
     await publisher.close();
   });
 
