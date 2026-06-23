@@ -83,7 +83,7 @@ func (h *Handler) Handle(ctx context.Context, body []byte) HandleResult {
 }
 
 func buildPaymentProcessedEvent(p entity.Payment) entity.PaymentProcessedEvent {
-	uuidV7, _ := uuid.NewV7()
+	uuidV7 := uuid.Must(uuid.NewV7())
 	return entity.PaymentProcessedEvent{
 		EventID:     uuidV7.String(),
 		EventType:   "payment.processed",
