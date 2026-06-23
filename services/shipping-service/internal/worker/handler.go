@@ -25,9 +25,7 @@ type Handler struct {
 }
 
 func NewHandler(gw gateway.CarrierGateway) *Handler {
-	return &Handler{
-		gateway: gw,
-	}
+	return &Handler{gateway: gw}
 }
 
 func (h *Handler) Handle(ctx context.Context, body []byte) HandleResult {
@@ -40,12 +38,12 @@ func (h *Handler) Handle(ctx context.Context, body []byte) HandleResult {
 	orderID := event.Payload.OrderID
 	logger := slog.With("order_id", orderID, "event_id", event.EventID)
 
-	if event.Payload.Status == "REJECTED" {
+	if event.Payload.Status == entity.PaymentStatusRejected {
 		logger.Info("payment was rejected, ignoring shipping request")
 		return HandleResult{Ack: true}
 	}
 
-	if event.Payload.Status != "APPROVED" {
+	if event.Payload.Status != entity.PaymentStatusApproved {
 		logger.Warn("unknown payment status, ignoring", "status", event.Payload.Status)
 		return HandleResult{Ack: true}
 	}
@@ -53,6 +51,7 @@ func (h *Handler) Handle(ctx context.Context, body []byte) HandleResult {
 	logger.Info("processing approved payment for shipping")
 
 	err := h.gateway.Dispatch(ctx, orderID)
+
 	if err != nil {
 		if strings.Contains(err.Error(), "invalid shipping address") {
 			logger.Warn("permanent carrier error, shipping failed", "error", err)
@@ -69,7 +68,7 @@ func (h *Handler) Handle(ctx context.Context, body []byte) HandleResult {
 }
 
 func buildResultEvent(p entity.PaymentProcessedPayload, status entity.ShippingStatus, reason string) entity.ShippingResultEvent {
-	uuidV7, _ := uuid.NewV7()
+	uuidV7 := uuid.Must(uuid.NewV7())
 	eventType := "shipping.completed"
 	if status == entity.StatusFailed {
 		eventType = "shipping.failed"

@@ -2,12 +2,20 @@ package entity
 
 import "time"
 
+// PaymentStatus matches the external payment service contract
+type PaymentStatus string
+
+const (
+	PaymentStatusApproved PaymentStatus = "APPROVED"
+	PaymentStatusRejected PaymentStatus = "REJECTED"
+)
+
 // PaymentProcessedPayload matches the payment-service output
 type PaymentProcessedPayload struct {
-	OrderID       string `json:"orderId"`
-	TransactionID string `json:"transactionId"`
-	Status        string `json:"status"` // "APPROVED" or "REJECTED"
-	ProcessedAt   string `json:"processedAt"`
+	OrderID       string        `json:"orderId"`
+	TransactionID string        `json:"transactionId"`
+	Status        PaymentStatus `json:"status"`
+	ProcessedAt   string        `json:"processedAt"`
 }
 
 // PaymentProcessedEvent is the event received from the exchange
