@@ -1,5 +1,6 @@
 import { asc, eq, inArray } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+import type { FastifyBaseLogger } from "fastify";
 import type { OrderPlacedEvent } from "../../order/order.events.js";
 import type { IOrderPublisherPort } from "../../order/order.types.js";
 import * as schema from "../database/schema.js";
@@ -11,6 +12,7 @@ export class OutboxRelay {
   constructor(
     private readonly db: NodePgDatabase<typeof schema>,
     private readonly publisher: IOrderPublisherPort,
+    private readonly logger: FastifyBaseLogger,
     private readonly pollIntervalMs = 1000,
   ) {}
 
@@ -33,7 +35,7 @@ export class OutboxRelay {
     try {
       await this.processOutbox();
     } catch (err) {
-      console.error("[OutboxRelay] Error processing outbox:", err);
+      this.logger.error({ err }, "[OutboxRelay] Error processing outbox");
     }
 
     if (this.isRunning) {
@@ -65,7 +67,7 @@ export class OutboxRelay {
           await this.publisher.publishOrderPlaced(eventPayload);
           processedIds.push(row.id);
         } catch (err) {
-          console.error(`[OutboxRelay] Failed to publish event ${row.id}:`, err);
+          this.logger.error({ err, eventId: row.id }, "[OutboxRelay] Failed to publish event");
           throw err;
         }
       }
@@ -76,7 +78,7 @@ export class OutboxRelay {
           .update(schema.outbox)
           .set({ processed: true, processedAt: new Date().toISOString() })
           .where(inArray(schema.outbox.id, processedIds));
-        console.log(`[OutboxRelay] Successfully published ${processedIds.length} events.`);
+        this.logger.info(`[OutboxRelay] Successfully published ${processedIds.length} events.`);
       }
     });
   }

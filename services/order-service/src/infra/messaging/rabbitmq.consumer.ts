@@ -1,3 +1,4 @@
+import type { FastifyBaseLogger } from "fastify";
 import { type Connection, ConsumerStatus } from "rabbitmq-client";
 import type { OrdersService } from "../../order/order.service.js";
 
@@ -11,6 +12,7 @@ export class RabbitOrderConsumer {
   constructor(
     rabbit: Connection,
     private readonly ordersService: OrdersService,
+    private readonly logger: FastifyBaseLogger,
   ) {
     this.consumer = rabbit.createConsumer(
       {
@@ -36,7 +38,7 @@ export class RabbitOrderConsumer {
           const payload = msg.body?.payload as BaseEventPayload;
 
           if (!payload?.orderId) {
-            console.error("Malformed message (without orderId), sending to DLQ");
+            this.logger.error({ routingKey }, "Malformed message (without orderId), sending to DLQ");
             return ConsumerStatus.DROP;
           }
 
@@ -62,20 +64,20 @@ export class RabbitOrderConsumer {
               break;
 
             default:
-              console.warn(`Unknown routing key ignored: ${routingKey}`);
+              this.logger.warn({ routingKey, orderId }, "Unknown routing key ignored");
               return ConsumerStatus.ACK;
           }
 
           return ConsumerStatus.ACK;
-        } catch (error) {
-          console.error("Error processing message, rejecting to DLQ:", error);
+        } catch (err) {
+          this.logger.error({ err }, "Error processing message, rejecting to DLQ");
           return ConsumerStatus.DROP;
         }
       },
     );
 
     this.consumer.on("error", err => {
-      console.error("Error in RabbitMQ consumer:", err);
+      this.logger.error({ err }, "Error in RabbitMQ consumer");
     });
   }
 

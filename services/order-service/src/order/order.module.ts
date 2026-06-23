@@ -11,8 +11,8 @@ export const OrderModule: FastifyPluginAsync = async app => {
   const repository = new DrizzleOrdersRepository(app.db);
   const publisher = new RabbitOrderPublisher(app.rabbit);
   const service = new OrdersService(repository);
-  const outboxRelay = new OutboxRelay(app.db, publisher);
-  const consumer = new RabbitOrderConsumer(app.rabbit, service);
+  const outboxRelay = new OutboxRelay(app.db, publisher, app.log);
+  const consumer = new RabbitOrderConsumer(app.rabbit, service, app.log);
 
   const api = app.withTypeProvider<ZodTypeProvider>();
 
