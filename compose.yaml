@@ -1,21 +1,4 @@
 services:
-  rabbitmq:
-    image: rabbitmq:4.3-management-alpine
-    ports:
-      - "5672:5672"
-      - "15672:15672"
-    volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
-    healthcheck:
-      test: [ "CMD", "rabbitmq-diagnostics", "-q", "ping" ]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-    environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
-    restart: unless-stopped
-
   postgres:
     image: postgres:18-alpine
     environment:
@@ -25,7 +8,7 @@ services:
     ports:
       - "5432:5432"
     healthcheck:
-      test: [ "CMD", "pg_isready", "-U", "postgres" ]
+      test: ["CMD", "pg_isready", "-U", "postgres"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -33,6 +16,32 @@ services:
       - postgres_data:/var/lib/postgresql
     restart: unless-stopped
 
+  temporal:
+    image: temporalio/auto-setup:1.24.2
+    ports:
+      - "7233:7233"
+    environment:
+      - DB=postgres12
+      - DB_PORT=5432
+      - POSTGRES_USER=postgres
+      - POSTGRES_PWD=postgres
+      - POSTGRES_SEEDS=postgres
+      - POSTGRES_OPTS=?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  temporal-ui:
+    image: temporalio/ui:2.27.2
+    ports:
+      - "8233:8080"
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:3000
+    depends_on:
+      - temporal
+    restart: unless-stopped
+
 volumes:
-  rabbitmq_data:
   postgres_data:
