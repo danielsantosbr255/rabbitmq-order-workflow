@@ -3,50 +3,38 @@ package main
 import (
 	"log/slog"
 	"os"
-	"os/signal"
-	"syscall"
 
-	"github.com/danielsantosbr255/notification-service/internal/config"
+	"go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/worker"
+
 	"github.com/danielsantosbr255/notification-service/internal/gateway"
-	"github.com/danielsantosbr255/notification-service/internal/worker"
+	temporalWorker "github.com/danielsantosbr255/notification-service/internal/worker"
 )
 
 func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
 
-	cfg := config.Load()
-
-	slog.Info("starting notification service...")
-
-	conn, err := config.Connect(cfg.RabbitMQURL)
-	if err != nil {
-		slog.Error("failed to connect to RabbitMQ", "error", err)
-		os.Exit(1)
-	}
-	defer conn.Close()
+	slog.Info("starting notification service temporal worker")
 
 	emailMock := gateway.NewEmailMock()
-	handler := worker.NewHandler(emailMock)
-	consumer := worker.NewConsumer(conn, handler)
+	activities := temporalWorker.NewNotificationActivities(emailMock)
 
-	if err := consumer.SetupTopology(); err != nil {
-		slog.Error("failed to setup topology", "error", err)
+	c, err := client.Dial(client.Options{
+		HostPort: os.Getenv("TEMPORAL_ADDRESS"),
+	})
+	if err != nil {
+		slog.Error("Unable to create Temporal client", "error", err)
 		os.Exit(1)
 	}
+	defer c.Close()
 
-	if err := consumer.Start(cfg.QOSPrefetch); err != nil {
-		slog.Error("failed to start consumer", "error", err)
+	w := worker.New(c, "order-saga-task-queue", worker.Options{})
+
+	w.RegisterActivity(activities.NotifyCustomer)
+
+	err = w.Run(worker.InterruptCh())
+	if err != nil {
+		slog.Error("Unable to start worker", "error", err)
 		os.Exit(1)
 	}
-
-	slog.Info("service is running. press Ctrl+C to stop.")
-
-	// Wait for termination signal
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-	<-sigChan
-
-	slog.Info("shutting down gracefully...")
-	consumer.Stop()
-	slog.Info("shutdown complete")
 }
