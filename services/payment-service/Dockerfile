@@ -13,7 +13,7 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /worker ./cmd/main.go
 
 # ── Stage 2: Runtime ──────────────────────────────────────────────────────────
-FROM alpine:3.22
+FROM alpine:3.21
 
 # Non-root user for security best practices.
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
@@ -22,5 +22,5 @@ COPY --from=builder /worker /worker
 
 USER appuser
 
-# The worker has no exposed ports — it only connects outbound to RabbitMQ.
+# The worker has no exposed ports — it connects outbound to Temporal.
 CMD ["/worker"]

@@ -43,5 +43,53 @@ services:
       - temporal
     restart: unless-stopped
 
+  order-service:
+    build:
+      context: ./services/order-service
+      target: prod
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - HOST=0.0.0.0
+      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/orders
+      - TEMPORAL_ADDRESS=temporal:7233
+    depends_on:
+      postgres:
+        condition: service_healthy
+      temporal:
+        condition: service_started
+    restart: unless-stopped
+
+  payment-service:
+    build:
+      context: ./services/payment-service
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+    depends_on:
+      temporal:
+        condition: service_started
+    restart: unless-stopped
+
+  shipping-service:
+    build:
+      context: ./services/shipping-service
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+    depends_on:
+      temporal:
+        condition: service_started
+    restart: unless-stopped
+
+  notification-service:
+    build:
+      context: ./services/notification-service
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+    depends_on:
+      temporal:
+        condition: service_started
+    restart: unless-stopped
+
 volumes:
   postgres_data:
