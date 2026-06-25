@@ -7,4 +7,5 @@ import (
 type PaymentRepository interface {
 	GetPaymentByOrderID(orderID string) (entity.Payment, error)
 	Save(p entity.Payment) error
+	RecordIdempotency(key string) error
 }

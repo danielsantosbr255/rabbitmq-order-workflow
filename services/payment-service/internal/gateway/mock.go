@@ -10,6 +10,7 @@ import (
 )
 
 var ErrTransient = errors.New("gateway: transient error, eligible for retry")
+var ErrPermanent = errors.New("gateway: permanent payment declined")
 
 type MockGateway struct{}
 
@@ -17,13 +18,20 @@ func NewMockGateway() *MockGateway {
 	return &MockGateway{}
 }
 
-func (g *MockGateway) Charge(ctx context.Context, orderID string) (string, error) {
+func (g *MockGateway) Charge(ctx context.Context, orderID string, customerID string, amount float64) (string, error) {
+	if customerID == "00000000-0000-4000-8000-000000000001" {
+		return "", ErrPermanent
+	}
+
 	n, err := rand.Int(rand.Reader, big.NewInt(100))
 	if err != nil {
 		return "", ErrTransient
 	}
 
-	if n.Int64() < 20 {
+	// Optional: keep transient error simulation for non-E2E runs
+	// but let's disable random failures if customerID starts with "E2E_"
+	// to ensure tests don't flake due to random timeouts.
+	if n.Int64() < 20 && customerID != "E2E_SUCCESS" {
 		select {
 		case <-ctx.Done():
 			return "", ctx.Err()

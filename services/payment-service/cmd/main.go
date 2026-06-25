@@ -22,7 +22,17 @@ func main() {
 	cfg := config.Load()
 	slog.Info("payment-service starting Temporal worker")
 
-	repo := repository.NewMemoryRepository()
+	dbUrl := os.Getenv("DATABASE_URL")
+	if dbUrl == "" {
+		slog.Error("DATABASE_URL environment variable is required")
+		os.Exit(1)
+	}
+
+	repo, err := repository.NewPostgresPaymentRepository(dbUrl)
+	if err != nil {
+		slog.Error("Failed to initialize postgres repository", "error", err)
+		os.Exit(1)
+	}
 	gw := gateway.NewMockGateway()
 	activities := temporalWorker.NewPaymentActivities(repo, gw, time.Duration(cfg.GatewayTimeoutMS)*time.Millisecond)
 
@@ -48,6 +58,6 @@ func main() {
 	}
 
 	slog.Info("Started Worker", "Namespace", "default", "TaskQueue", "payment-service-task-queue")
-	
+
 	select {}
 }

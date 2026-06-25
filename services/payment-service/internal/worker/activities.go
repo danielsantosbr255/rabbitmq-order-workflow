@@ -23,18 +23,18 @@ func NewPaymentActivities(repo repository.PaymentRepository, gw gateway.PaymentG
 	}
 }
 
-func (a *PaymentActivities) ProcessPayment(ctx context.Context, orderID string) error {
-	// --- Idempotency Check ---
-	if _, err := a.repo.GetPaymentByOrderID(orderID); err == nil {
-		// Payment already processed, return success implicitly
-		return nil
+func (a *PaymentActivities) ProcessPayment(ctx context.Context, orderID string, customerID string, amount float64) error {
+	// --- Idempotency Check using domain data ---
+	existingPayment, err := a.repo.GetPaymentByOrderID(orderID)
+	if err == nil && existingPayment.Status == entity.StatusApproved {
+		return nil // Already processed, return success implicitly
 	}
 
 	// --- Gateway Charge ---
 	chargeCtx, cancel := context.WithTimeout(ctx, a.timeout)
 	defer cancel()
 
-	transactionID, err := a.gateway.Charge(chargeCtx, orderID)
+	transactionID, err := a.gateway.Charge(chargeCtx, orderID, customerID, amount)
 	if err != nil {
 		return err // Temporal will auto-retry based on the policy
 	}
@@ -53,7 +53,7 @@ func (a *PaymentActivities) ProcessPayment(ctx context.Context, orderID string) 
 	return nil
 }
 
-func (a *PaymentActivities) RefundPayment(ctx context.Context, orderID string) error {
+func (a *PaymentActivities) RefundPayment(ctx context.Context, orderID string, customerID string, amount float64) error {
 	// --- Check if payment exists ---
 	payment, err := a.repo.GetPaymentByOrderID(orderID)
 	if err != nil {
@@ -61,9 +61,9 @@ func (a *PaymentActivities) RefundPayment(ctx context.Context, orderID string) e
 		return nil
 	}
 
+	// --- Idempotency Check using domain data ---
 	if payment.Status == entity.StatusRefunded {
-		// Already refunded, idempotency
-		return nil
+		return nil // Already refunded, idempotency
 	}
 
 	// --- Gateway Refund ---
@@ -71,7 +71,7 @@ func (a *PaymentActivities) RefundPayment(ctx context.Context, orderID string) e
 	defer cancel()
 
 	// Using the same Charge interface for simplicity, assuming the gateway handles negative amounts or a specific method
-	_, err = a.gateway.Charge(refundCtx, "REFUND_"+orderID) 
+	_, err = a.gateway.Charge(refundCtx, "REFUND_"+orderID, customerID, amount)
 	if err != nil {
 		return err // Temporal will auto-retry
 	}
