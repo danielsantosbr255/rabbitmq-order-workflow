@@ -1,21 +1,44 @@
-import { ResourceNotFoundError } from "../core/errors/app.errors.js";
+import { IdempotencyConflictError, ResourceNotFoundError } from "../core/errors/app.errors.js";
 import { startOrderSaga } from "../infra/temporal/client.js";
 import { OrderEntity } from "./order.entity.js";
 import type { CreateOrderBody } from "./order.schemas.js";
 import type { IOrdersRepository } from "./order.types.js";
+import type { ProductCatalogService } from "./product-catalog.service.js";
 
 export class OrdersService {
-  constructor(private readonly repository: IOrdersRepository) {}
+  constructor(
+    private readonly repository: IOrdersRepository,
+    private readonly catalog: ProductCatalogService,
+  ) {}
 
   async create(input: CreateOrderBody, idempotencyKey: string): Promise<{ order: OrderEntity; isNew: boolean }> {
-    const order = OrderEntity.create(input);
+    // Populate unit prices for each item
+    const itemsWithPrices = await Promise.all(
+      input.items.map(async item => {
+        const unitPrice = await this.catalog.getProductPrice(item.productId);
+        return { ...item, unitPrice };
+      }),
+    );
 
-    const result = await this.repository.createWithIdempotency(order, idempotencyKey);
-    if ("existingOrder" in result) {
-      return { order: result.existingOrder, isNew: false };
+    const order = OrderEntity.create({
+      customerId: input.customerId,
+      items: itemsWithPrices,
+    });
+
+    try {
+      await this.repository.createWithIdempotency(order, idempotencyKey);
+    } catch (error) {
+      if (error instanceof IdempotencyConflictError) {
+        // Race condition lost, fetch the one that was saved
+        const existingOrder = await this.repository.findByIdempotencyKey(idempotencyKey);
+        if (existingOrder) {
+          return { order: existingOrder, isNew: false };
+        }
+      }
+      throw error;
     }
 
-    await startOrderSaga(order.id, order.customerId, 100); // 100 is dummy amount for now
+    await startOrderSaga(order.id, order.customerId, order.totalAmount);
     return { order, isNew: true };
   }
 
