@@ -1,3 +1,4 @@
+import { IdempotencyConflictError } from "../../core/errors/app.errors.js";
 import { OrderEntity } from "../order.entity.js";
 import type { OrderData } from "../order.schemas.js";
 import type { IOrdersRepository } from "../order.types.js";
@@ -16,22 +17,19 @@ export class InMemoryOrdersRepository implements IOrdersRepository {
     return order;
   }
 
-  async createWithIdempotency(
-    order: OrderEntity,
-    idempotencyKey: string,
-  ): Promise<OrderEntity | { existingOrder: OrderEntity }> {
+  async findByIdempotencyKey(key: string): Promise<OrderEntity | null> {
+    const orderId = this.idempotencyKeys.get(key);
+    if (!orderId) return null;
+    return this.findById(orderId);
+  }
+
+  async createWithIdempotency(order: OrderEntity, idempotencyKey: string): Promise<void> {
     if (this.idempotencyKeys.has(idempotencyKey)) {
-      const existingOrderId = this.idempotencyKeys.get(idempotencyKey);
-      if (existingOrderId) {
-        const existingOrder = await this.findById(existingOrderId);
-        if (existingOrder) {
-          return { existingOrder };
-        }
-      }
+      throw new IdempotencyConflictError(idempotencyKey);
     }
 
     this.idempotencyKeys.set(idempotencyKey, order.id);
-    return this.save(order);
+    await this.save(order);
   }
 
   async findById(id: string): Promise<OrderEntity | null> {

@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+import { IdempotencyConflictError } from "../../core/errors/app.errors.js";
 import * as schema from "../order.db-schema.js";
 import { OrderEntity } from "../order.entity.js";
 import type { IOrdersRepository } from "../order.types.js";
@@ -16,8 +17,9 @@ export class DrizzleOrdersRepository implements IOrdersRepository {
         .values({
           id: data.id,
           customerId: data.customerId,
-          status: data.status,
           items: data.items,
+          totalAmount: data.totalAmount,
+          status: data.status,
           createdAt: data.createdAt,
           updatedAt: data.updatedAt,
         })
@@ -26,6 +28,7 @@ export class DrizzleOrdersRepository implements IOrdersRepository {
           set: {
             status: data.status,
             items: data.items,
+            totalAmount: data.totalAmount,
             updatedAt: data.updatedAt,
           },
         });
@@ -34,23 +37,19 @@ export class DrizzleOrdersRepository implements IOrdersRepository {
     return order;
   }
 
-  async createWithIdempotency(
-    order: OrderEntity,
-    idempotencyKey: string,
-  ): Promise<OrderEntity | { existingOrder: OrderEntity }> {
-    const data = order.toJSON();
-
-    // Fast path: check if key already exists before starting a transaction
+  async findByIdempotencyKey(key: string): Promise<OrderEntity | null> {
     const [existingKey] = await this.db
       .select()
       .from(schema.idempotencyKeys)
-      .where(eq(schema.idempotencyKeys.key, idempotencyKey))
+      .where(eq(schema.idempotencyKeys.key, key))
       .limit(1);
 
-    if (existingKey) {
-      const existingOrder = await this.findById(existingKey.orderId);
-      if (existingOrder) return { existingOrder };
-    }
+    if (!existingKey) return null;
+    return this.findById(existingKey.orderId);
+  }
+
+  async createWithIdempotency(order: OrderEntity, idempotencyKey: string): Promise<void> {
+    const data = order.toJSON();
 
     try {
       await this.db.transaction(async tx => {
@@ -58,8 +57,9 @@ export class DrizzleOrdersRepository implements IOrdersRepository {
         await tx.insert(schema.orders).values({
           id: data.id,
           customerId: data.customerId,
-          status: data.status,
           items: data.items,
+          totalAmount: data.totalAmount,
+          status: data.status,
           createdAt: data.createdAt,
           updatedAt: data.updatedAt,
         });
@@ -71,22 +71,10 @@ export class DrizzleOrdersRepository implements IOrdersRepository {
           createdAt: data.createdAt,
         });
       });
-      return order;
     } catch (e) {
       const error = e as { code?: string };
       if (error?.code === "23505") {
-        // unique_violation
-        // Concurrent request won the race
-        const [concurrentKey] = await this.db
-          .select()
-          .from(schema.idempotencyKeys)
-          .where(eq(schema.idempotencyKeys.key, idempotencyKey))
-          .limit(1);
-
-        if (concurrentKey) {
-          const existingOrder = await this.findById(concurrentKey.orderId);
-          if (existingOrder) return { existingOrder };
-        }
+        throw new IdempotencyConflictError(idempotencyKey);
       }
       throw e;
     }
@@ -100,8 +88,9 @@ export class DrizzleOrdersRepository implements IOrdersRepository {
     return OrderEntity.restore({
       id: row.id,
       customerId: row.customerId,
-      status: row.status,
       items: row.items,
+      totalAmount: row.totalAmount,
+      status: row.status,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     });
