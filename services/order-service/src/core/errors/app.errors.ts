@@ -23,3 +23,9 @@ export class InvalidStateTransitionError extends DomainError {
     super(`Cannot transition from ${fromState} to ${toState}`);
   }
 }
+
+export class IdempotencyConflictError extends DomainError {
+  constructor(public readonly idempotencyKey: string) {
+    super(`Concurrent request detected for idempotency key: ${idempotencyKey}`);
+  }
+}

@@ -1,12 +1,15 @@
 import { InvalidStateTransitionError } from "../core/errors/app.errors.js";
-import type { OrderData, OrderStatus } from "./order.schemas.js";
+import type { OrderData, OrderItem, OrderStatus } from "./order.schemas.js";
 
-type CreateOrderInput = Pick<OrderData, "customerId" | "items">;
+type CreateOrderInput = Pick<OrderData, "customerId"> & {
+  items: OrderItem[];
+};
 
 export class OrderEntity {
   private _id: string;
   private _customerId: string;
-  private _items: OrderData["items"];
+  private _items: OrderItem[];
+  private _totalAmount: number;
   private _status: OrderStatus;
   private _createdAt: string;
   private _updatedAt: string;
@@ -15,6 +18,7 @@ export class OrderEntity {
     this._id = data.id;
     this._customerId = data.customerId;
     this._items = data.items;
+    this._totalAmount = data.totalAmount;
     this._status = data.status;
     this._createdAt = data.createdAt;
     this._updatedAt = data.updatedAt;
@@ -29,6 +33,9 @@ export class OrderEntity {
   get items() {
     return this._items;
   }
+  get totalAmount() {
+    return this._totalAmount;
+  }
   get status() {
     return this._status;
   }
@@ -41,10 +48,13 @@ export class OrderEntity {
 
   static create(input: CreateOrderInput): OrderEntity {
     const now = new Date().toISOString();
+    const totalAmount = input.items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
+
     return new OrderEntity({
       id: crypto.randomUUID(),
       customerId: input.customerId,
       items: input.items,
+      totalAmount,
       status: "PENDING",
       createdAt: now,
       updatedAt: now,
@@ -93,6 +103,7 @@ export class OrderEntity {
       id: this._id,
       customerId: this._customerId,
       items: [...this._items],
+      totalAmount: this._totalAmount,
       status: this._status,
       createdAt: this._createdAt,
       updatedAt: this._updatedAt,
