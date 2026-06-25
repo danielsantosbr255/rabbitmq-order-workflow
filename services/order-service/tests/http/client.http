@@ -1,6 +1,7 @@
 
 POST http://localhost:3001/orders
 Content-Type: application/json
+X-Idempotency-Key: f7ec74b8-207b-470f-98c6-f903b4c408f9
 
 {
   "customerId": "95295736-5e0e-424f-b469-7451894a6e69",
