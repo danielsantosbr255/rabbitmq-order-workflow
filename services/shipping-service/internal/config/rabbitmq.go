@@ -10,9 +10,9 @@ import (
 
 // Config holds all environment-driven configuration for the shipping worker.
 type Config struct {
-	RabbitMQURL      string
-	QOSPrefetch      int
-	MaxRetries       int
+	RabbitMQURL string
+	QOSPrefetch int
+	MaxRetries  int
 }
 
 // Load reads configuration from environment variables

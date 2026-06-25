@@ -8,6 +8,7 @@ import (
 	"go.temporal.io/sdk/worker"
 
 	"github.com/danielsantosbr255/shipping-service/internal/gateway"
+	"github.com/danielsantosbr255/shipping-service/internal/repository"
 	temporalWorker "github.com/danielsantosbr255/shipping-service/internal/worker"
 )
 
@@ -16,8 +17,20 @@ func main() {
 
 	slog.Info("shipping-service starting Temporal worker")
 
+	dbUrl := os.Getenv("DATABASE_URL")
+	if dbUrl == "" {
+		slog.Error("DATABASE_URL environment variable is required")
+		os.Exit(1)
+	}
+
+	repo, err := repository.NewIdempotencyRepository(dbUrl)
+	if err != nil {
+		slog.Error("Failed to initialize idempotency repository", "error", err)
+		os.Exit(1)
+	}
+
 	carrierMock := gateway.NewCarrierMock()
-	activities := temporalWorker.NewShippingActivities(carrierMock)
+	activities := temporalWorker.NewShippingActivities(carrierMock, repo)
 
 	c, err := client.Dial(client.Options{
 		HostPort: os.Getenv("TEMPORAL_ADDRESS"),

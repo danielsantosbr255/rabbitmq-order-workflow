@@ -9,7 +9,7 @@ import (
 
 // CarrierGateway defines the interface for interacting with the external shipping carrier
 type CarrierGateway interface {
-	Dispatch(ctx context.Context, orderID string) error
+	Dispatch(ctx context.Context, orderID string, customerID string) error
 }
 
 type carrierMock struct {
@@ -24,7 +24,11 @@ func NewCarrierMock() CarrierGateway {
 }
 
 // Dispatch simulates a call to an external carrier API
-func (m *carrierMock) Dispatch(ctx context.Context, orderID string) error {
+func (m *carrierMock) Dispatch(ctx context.Context, orderID string, customerID string) error {
+	if customerID == "00000000-0000-4000-8000-000000000002" {
+		return errors.New("permanent: invalid shipping address")
+	}
+
 	// Simulate network latency
 	select {
 	case <-time.After(time.Duration(m.rng.Intn(500)+100) * time.Millisecond):
@@ -35,12 +39,12 @@ func (m *carrierMock) Dispatch(ctx context.Context, orderID string) error {
 	roll := m.rng.Intn(100)
 
 	// 10% chance of transient error (timeout, 5xx) -> triggers retry
-	if roll < 10 {
+	if roll < 10 && customerID != "E2E_SUCCESS" {
 		return errors.New("carrier API timeout")
 	}
 
 	// 5% chance of permanent error (invalid address) -> triggers compensation
-	if roll >= 10 && roll < 15 {
+	if roll >= 10 && roll < 15 && customerID != "E2E_SUCCESS" {
 		return errors.New("invalid shipping address")
 	}
 
