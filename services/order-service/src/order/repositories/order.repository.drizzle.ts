@@ -71,9 +71,15 @@ export class DrizzleOrdersRepository implements IOrdersRepository {
           createdAt: data.createdAt,
         });
       });
-    } catch (e) {
-      const error = e as { code?: string };
-      if (error?.code === "23505") {
+    } catch (e: unknown) {
+      // Drizzle wraps the original error. We check either the e.code, the e.cause.code or the message
+      const error = e as { code?: string; cause?: { code?: string }; message?: string };
+      const isDuplicateKey =
+        error.code === "23505" ||
+        error.cause?.code === "23505" ||
+        (typeof error.message === "string" && error.message.includes("duplicate key value"));
+
+      if (isDuplicateKey) {
         throw new IdempotencyConflictError(idempotencyKey);
       }
       throw e;
