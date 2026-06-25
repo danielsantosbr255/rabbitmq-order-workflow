@@ -15,6 +15,13 @@
       "when": 1782309522666,
       "tag": "0001_demonic_molly_hayes",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1782350886139,
+      "tag": "0002_huge_luckman",
+      "breakpoints": true
     }
   ]
 }

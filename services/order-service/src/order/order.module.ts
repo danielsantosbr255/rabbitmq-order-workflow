@@ -13,8 +13,9 @@ export const OrderModule: FastifyPluginAsync = async app => {
   const api = app.withTypeProvider<ZodTypeProvider>();
 
   api.post("/", { schema: createOrderRouteSchema }, async (request, reply) => {
-    const order = await service.create(request.body, request.id);
-    return reply.status(201).send({ orderId: order.id, status: order.status });
+    const idempotencyKey = request.headers["x-idempotency-key"];
+    const { order, isNew } = await service.create(request.body, idempotencyKey);
+    return reply.status(isNew ? 201 : 200).send({ orderId: order.id, status: order.status });
   });
 
   api.get("/:id", { schema: getOrderRouteSchema }, async (request, reply) => {

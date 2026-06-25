@@ -54,6 +54,11 @@ describe("OrderService E2E Integration (Testcontainers)", () => {
         created_at TIMESTAMP WITH TIME ZONE NOT NULL,
         updated_at TIMESTAMP WITH TIME ZONE NOT NULL
       );
+      CREATE TABLE idempotency_keys (
+        key UUID PRIMARY KEY,
+        order_id UUID NOT NULL REFERENCES orders(id),
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL
+      );
     `);
 
     const db = drizzle(pgClient, { schema });
@@ -95,9 +100,15 @@ describe("OrderService E2E Integration (Testcontainers)", () => {
     const response = await app.inject({
       method: "POST",
       url: "/orders",
+      headers: {
+        "x-idempotency-key": crypto.randomUUID(),
+      },
       payload,
     });
 
+    if (response.statusCode !== 201) {
+      throw new Error(`Expected 201 but got ${response.statusCode}: ${response.payload}`);
+    }
     expect(response.statusCode).toBe(201);
 
     const body = response.json() as { orderId: string; status: string };
@@ -105,6 +116,6 @@ describe("OrderService E2E Integration (Testcontainers)", () => {
     expect(body.status).toBe("PENDING");
 
     // Verify the Temporal Saga was triggered
-    expect(temporalClient.startOrderSaga).toHaveBeenCalledWith(body.orderId);
+    expect(temporalClient.startOrderSaga).toHaveBeenCalledWith(body.orderId, payload.customerId, 100);
   });
 });

@@ -7,12 +7,16 @@ import type { IOrdersRepository } from "./order.types.js";
 export class OrdersService {
   constructor(private readonly repository: IOrdersRepository) {}
 
-  async create(input: CreateOrderBody, _correlationId?: string): Promise<OrderEntity> {
+  async create(input: CreateOrderBody, idempotencyKey: string): Promise<{ order: OrderEntity; isNew: boolean }> {
     const order = OrderEntity.create(input);
 
-    await this.repository.save(order);
-    await startOrderSaga(order.id);
-    return order;
+    const result = await this.repository.createWithIdempotency(order, idempotencyKey);
+    if ("existingOrder" in result) {
+      return { order: result.existingOrder, isNew: false };
+    }
+
+    await startOrderSaga(order.id, order.customerId, 100); // 100 is dummy amount for now
+    return { order, isNew: true };
   }
 
   async getById(id: string): Promise<OrderEntity> {

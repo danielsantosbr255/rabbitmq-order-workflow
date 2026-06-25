@@ -13,6 +13,7 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:integration": "vitest run -c vitest.integration.config.ts",
+    "test:e2e": "vitest run -c vitest.e2e.config.ts",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "db:migrate": "drizzle-kit migrate",
@@ -58,12 +59,6 @@
     "vitest": "^4.1.8"
   },
   "pnpm": {
-    "onlyBuiltDependencies": [
-      "@biomejs/biome",
-      "@swc/core",
-      "cpu-features",
-      "esbuild",
-      "protobufjs"
-    ]
+    "onlyBuiltDependencies": ["@biomejs/biome", "@swc/core", "cpu-features", "esbuild", "protobufjs"]
   }
 }

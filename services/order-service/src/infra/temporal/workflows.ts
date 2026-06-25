@@ -2,12 +2,12 @@ import { proxyActivities } from "@temporalio/workflow";
 
 // Types for activities that live in other services (Go)
 export interface PaymentActivities {
-  ProcessPayment(orderId: string): Promise<void>;
-  RefundPayment(orderId: string): Promise<void>;
+  ProcessPayment(orderId: string, customerId: string, amount: number): Promise<void>;
+  RefundPayment(orderId: string, customerId: string, amount: number): Promise<void>;
 }
 
 export interface ShippingActivities {
-  ShipOrder(orderId: string): Promise<void>;
+  ShipOrder(orderId: string, customerId: string): Promise<void>;
 }
 
 export interface NotificationActivities {
@@ -29,6 +29,7 @@ const payment = proxyActivities<PaymentActivities>({
 
 const shipping = proxyActivities<ShippingActivities>({
   startToCloseTimeout: "1 minute",
+  retry: { maximumAttempts: 3 },
   taskQueue: "shipping-service-task-queue",
 });
 
@@ -37,18 +38,18 @@ const notification = proxyActivities<NotificationActivities>({
   taskQueue: "notification-service-task-queue",
 });
 
-export async function OrderSagaWorkflow(orderId: string): Promise<void> {
+export async function OrderSagaWorkflow(orderId: string, customerId: string, amount: number = 100): Promise<void> {
   let paymentProcessed = false;
   let shippingProcessed = false;
 
   try {
     // Step 1: Process Payment
-    await payment.ProcessPayment(orderId);
+    await payment.ProcessPayment(orderId, customerId, amount);
     paymentProcessed = true;
     await updateOrderStatus(orderId, "PAID");
 
     // Step 2: Ship Order
-    await shipping.ShipOrder(orderId);
+    await shipping.ShipOrder(orderId, customerId);
     shippingProcessed = true;
     await updateOrderStatus(orderId, "SHIPPED");
 
@@ -62,7 +63,7 @@ export async function OrderSagaWorkflow(orderId: string): Promise<void> {
     }
 
     if (paymentProcessed) {
-      await payment.RefundPayment(orderId);
+      await payment.RefundPayment(orderId, customerId, amount);
     }
 
     await updateOrderStatus(orderId, "CANCELED");

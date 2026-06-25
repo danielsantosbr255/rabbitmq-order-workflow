@@ -16,8 +16,10 @@ describe("OrdersService", () => {
       items: [{ productId: crypto.randomUUID(), quantity: 2 }],
     };
 
-    const order = await service.create(input);
+    const idempotencyKey = crypto.randomUUID();
+    const { order, isNew } = await service.create(input, idempotencyKey);
 
+    expect(isNew).toBe(true);
     expect(order.id).toBeDefined();
     expect(order.status).toBe("PENDING");
     expect(order.customerId).toBe(input.customerId);

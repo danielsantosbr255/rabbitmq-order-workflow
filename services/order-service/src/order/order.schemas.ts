@@ -33,6 +33,10 @@ export const createOrderResponseSchema = z.object({
   status: orderStatuses,
 });
 
+export const createOrderHeadersSchema = z.object({
+  "x-idempotency-key": z.string().uuid(),
+});
+
 export const orderParamsSchema = z.object({
   id: z.uuid(),
 });
@@ -49,9 +53,11 @@ export const createOrderRouteSchema = {
   tags: ["orders"],
   summary: "Create a new order",
   description: "Creates a new order with the provided items and customer ID.",
+  headers: createOrderHeadersSchema,
   body: createOrderBodySchema,
   response: {
     201: createOrderResponseSchema,
+    200: createOrderResponseSchema,
     400: apiErrorSchema,
   },
 } satisfies FastifySchema;
@@ -73,6 +79,7 @@ export type OrderData = z.infer<typeof orderSchema>;
 export type OrderItem = z.infer<typeof orderItemSchema>;
 export type OrderStatus = z.infer<typeof orderStatuses>;
 export type CreateOrderBody = z.infer<typeof createOrderBodySchema>;
+export type CreateOrderHeaders = z.infer<typeof createOrderHeadersSchema>;
 export type CreateOrderResponse = z.infer<typeof createOrderResponseSchema>;
 export type OrderParams = z.infer<typeof orderParamsSchema>;
 export type ApiErrorResponse = z.infer<typeof apiErrorSchema>;

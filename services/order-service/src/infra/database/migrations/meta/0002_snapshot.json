@@ -1,9 +1,50 @@
 {
-  "id": "df3a5a8b-e334-4220-9c80-51273b5dbc3b",
-  "prevId": "434eb209-b445-448f-83ff-415d98cea241",
+  "id": "803d5d8c-8466-42d2-aa53-fa044d4dda43",
+  "prevId": "df3a5a8b-e334-4220-9c80-51273b5dbc3b",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
+    "public.idempotency_keys": {
+      "name": "idempotency_keys",
+      "schema": "",
+      "columns": {
+        "key": {
+          "name": "key",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "order_id": {
+          "name": "order_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "idempotency_keys_order_id_orders_id_fk": {
+          "name": "idempotency_keys_order_id_orders_id_fk",
+          "tableFrom": "idempotency_keys",
+          "tableTo": "orders",
+          "columnsFrom": ["order_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.orders": {
       "name": "orders",
       "schema": "",
