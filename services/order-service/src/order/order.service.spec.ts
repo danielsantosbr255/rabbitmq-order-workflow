@@ -40,7 +40,7 @@ describe("OrdersService", () => {
     const fakeCatalog = new ProductCatalogService();
     const order = OrderEntity.create({
       customerId: crypto.randomUUID(),
-      items: [],
+      items: [{ productId: crypto.randomUUID(), quantity: 1, unitPrice: 100 }],
     });
     await fakeRepo.save(order);
 

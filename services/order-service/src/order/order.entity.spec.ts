@@ -4,8 +4,8 @@ import { OrderEntity } from "../../src/order/order.entity.js";
 describe("OrderEntity Idempotency", () => {
   it("markAsPaid should be idempotent", () => {
     const order = OrderEntity.create({
-      customerId: "123",
-      items: [{ productId: "abc", quantity: 1, unitPrice: 100 }],
+      customerId: crypto.randomUUID(),
+      items: [{ productId: crypto.randomUUID(), quantity: 1, unitPrice: 100 }],
     });
 
     // First call
@@ -19,8 +19,8 @@ describe("OrderEntity Idempotency", () => {
 
   it("markAsShipped should be idempotent", () => {
     const order = OrderEntity.create({
-      customerId: "123",
-      items: [{ productId: "abc", quantity: 1, unitPrice: 100 }],
+      customerId: crypto.randomUUID(),
+      items: [{ productId: crypto.randomUUID(), quantity: 1, unitPrice: 100 }],
     });
 
     order.markAsPaid();
@@ -34,8 +34,8 @@ describe("OrderEntity Idempotency", () => {
 
   it("cancel should be idempotent", () => {
     const order = OrderEntity.create({
-      customerId: "123",
-      items: [{ productId: "abc", quantity: 1, unitPrice: 100 }],
+      customerId: crypto.randomUUID(),
+      items: [{ productId: crypto.randomUUID(), quantity: 1, unitPrice: 100 }],
     });
 
     order.cancel();

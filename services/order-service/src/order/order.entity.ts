@@ -1,5 +1,6 @@
 import { InvalidStateTransitionError } from "../core/errors/app.errors.js";
 import type { OrderData, OrderItem, OrderStatus } from "./order.schemas.js";
+import { orderSchema } from "./order.schemas.js";
 
 type CreateOrderInput = Pick<OrderData, "customerId"> & {
   items: OrderItem[];
@@ -46,11 +47,12 @@ export class OrderEntity {
     return this._updatedAt;
   }
 
+
   static create(input: CreateOrderInput): OrderEntity {
     const now = new Date().toISOString();
     const totalAmount = input.items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
 
-    return new OrderEntity({
+    const data = orderSchema.parse({
       id: crypto.randomUUID(),
       customerId: input.customerId,
       items: input.items,
@@ -59,10 +61,12 @@ export class OrderEntity {
       createdAt: now,
       updatedAt: now,
     });
+
+    return new OrderEntity(data);
   }
 
   static restore(data: OrderData): OrderEntity {
-    return new OrderEntity(data);
+    return new OrderEntity(orderSchema.parse(data));
   }
 
   markAsPaid(): void {
