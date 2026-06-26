@@ -6,8 +6,8 @@ if (existsSync(".env")) {
 }
 
 export default defineConfig({
-  schema: "./src/infra/database/schema.ts",
-  out: "./src/infra/database/migrations",
+  schema: "./src/adapters/outbound/database/schema/index.ts",
+  out: "./src/adapters/outbound/database/migrations",
   dialect: "postgresql",
   dbCredentials: {
     url: process.env.DATABASE_URL || "postgres://postgres:postgres@localhost:5432/orders",
