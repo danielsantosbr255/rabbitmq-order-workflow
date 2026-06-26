@@ -4,21 +4,18 @@ import Fastify from "fastify";
 import { serializerCompiler, validatorCompiler } from "fastify-type-provider-zod";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import * as schema from "../../src/infra/database/schema.js";
-import * as temporalClient from "../../src/infra/temporal/client.js";
-import { OrderModule } from "../../src/order/order.module.js";
-import errorHandlerPlugin from "../../src/plugins/error-handler.plugin.js";
-
-// Mock Temporal Client and Worker to prevent connection attempts during tests
-vi.mock("../../src/infra/temporal/client.js", () => ({
-  initTemporalClient: vi.fn().mockResolvedValue(undefined),
-  startOrderSaga: vi.fn().mockResolvedValue({ workflowId: "mock-id" }),
-}));
-
-vi.mock("../../src/infra/temporal/worker.js", () => ({
-  startTemporalWorker: vi.fn().mockResolvedValue(undefined),
-  stopTemporalWorker: vi.fn().mockResolvedValue(undefined),
-}));
+import { OrderController } from "../../src/adapters/inbound/http/fastify/controllers/order.controller.js";
+import errorHandlerPlugin from "../../src/adapters/inbound/http/fastify/plugins/error-handler.plugin.js";
+import { orderRoutes } from "../../src/adapters/inbound/http/fastify/routes/order.routes.js";
+import { MockProductCatalogAdapter } from "../../src/adapters/outbound/catalog/mock-product-catalog.adapter.js";
+import { DrizzleOrdersRepository } from "../../src/adapters/outbound/database/repositories/drizzle-order.repository.js";
+// ── Adapters ────────────────────────────────────────────────────────
+import * as schema from "../../src/adapters/outbound/database/schema/index.js";
+// ── Ports Mock ──────────────────────────────────────────────────────
+import type { ISagaOrchestrator } from "../../src/application/ports/saga-orchestrator.port.js";
+// ── Application ─────────────────────────────────────────────────────
+import { CreateOrderUseCase } from "../../src/application/use-cases/create-order.use-case.js";
+import { GetOrderUseCase } from "../../src/application/use-cases/get-order.use-case.js";
 
 // Container image definitions for Testcontainers
 const POSTGRES_IMAGE = "postgres:18-alpine";
@@ -35,6 +32,7 @@ describe("OrderService E2E Integration (Testcontainers)", () => {
   let pgContainer: StartedPostgreSqlContainer;
   let pgClient: pg.Client;
   let app: ReturnType<typeof Fastify>;
+  let mockSaga: ISagaOrchestrator;
 
   beforeAll(async () => {
     // Spin up real database instance via Testcontainers
@@ -64,25 +62,32 @@ describe("OrderService E2E Integration (Testcontainers)", () => {
 
     const db = drizzle(pgClient, { schema });
 
+    // Mock SAGA orchestrator
+    mockSaga = {
+      startOrderSaga: vi.fn(async () => {}),
+    };
+
+    // Manual DI — same pattern as Composition Root
+    const repository = new DrizzleOrdersRepository(db);
+    const productCatalog = new MockProductCatalogAdapter();
+    const createOrderUseCase = new CreateOrderUseCase(repository, productCatalog, mockSaga);
+    const getOrderUseCase = new GetOrderUseCase(repository);
+    const controller = new OrderController(createOrderUseCase, getOrderUseCase);
+
     // Bootstrap Fastify application
     app = Fastify();
     app.setValidatorCompiler(validatorCompiler);
     app.setSerializerCompiler(serializerCompiler);
     app.register(errorHandlerPlugin);
 
-    // Inject the database connection
+    // Inject the database connection (needed by Fastify type declaration)
     app.decorate("db", db);
 
-    // We no longer need to register temporalPlugin explicitly here
-    // because we are injecting OrderModule in a testing context, but if it is used, it's mocked.
-    // In our real app, temporalPlugin is in app.ts, but here we only register OrderModule.
-    // This perfectly tests the domain logic without starting Temporal infra.
-    app.register(OrderModule, { prefix: "/orders" });
+    app.register(orderRoutes(controller), { prefix: "/orders" });
     await app.ready();
   });
 
   afterAll(async () => {
-    // Teardown services in reverse order of initialization
     await app?.close();
     await pgClient?.end();
     await pgContainer?.stop();
@@ -94,10 +99,9 @@ describe("OrderService E2E Integration (Testcontainers)", () => {
     expect(result.rows[0]?.ready).toBe(1);
   });
 
-  it("should create an order via HTTP and start Temporal Saga", async () => {
+  it("should create an order via HTTP and start SAGA via port", async () => {
     const payload = buildCreateOrderPayload();
 
-    // Execute HTTP request using Fastify's in-memory light-my-request
     const response = await app.inject({
       method: "POST",
       url: "/orders",
@@ -116,7 +120,11 @@ describe("OrderService E2E Integration (Testcontainers)", () => {
     expect(body.orderId).toBeDefined();
     expect(body.status).toBe("PENDING");
 
-    // Verify the Temporal Saga was triggered
-    expect(temporalClient.startOrderSaga).toHaveBeenCalledWith(body.orderId, payload.customerId, 1500);
+    // Resolve the expected price from the mock catalog
+    const productCatalog = new MockProductCatalogAdapter();
+    const unitPrice = await productCatalog.getProductPrice(payload.items[0]?.productId as string);
+
+    // Verify the SAGA was triggered via port
+    expect(mockSaga.startOrderSaga).toHaveBeenCalledWith(body.orderId, payload.customerId, unitPrice);
   });
 });
