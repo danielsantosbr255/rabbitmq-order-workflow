@@ -1,16 +1,9 @@
 import { OrderEntity } from "../../../../domain/entities/order.entity.js";
 import type { orders } from "../schema/orders.schema.js";
 
-/** Raw row shape returned by a SELECT on the orders table */
 type OrderRow = typeof orders.$inferSelect;
-
-/** Shape accepted by INSERT on the orders table */
 type OrderInsert = typeof orders.$inferInsert;
 
-/**
- * Bidirectional mapper between Domain (OrderEntity) and Persistence (Drizzle rows).
- * Lives in the adapter layer — the entity never knows about Drizzle types.
- */
 export function toDomain(row: OrderRow): OrderEntity {
   return OrderEntity.restore({
     id: row.id,
