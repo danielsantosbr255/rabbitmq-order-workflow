@@ -1,22 +1,15 @@
 import { z } from "zod/v4";
 import { apiErrorSchema, orderStatusesSchema } from "./shared.schemas.js";
 
-export const createOrderBodySchema = z.object({
-  customerId: z.uuid(),
-  items: z.array(z.object({ productId: z.uuid(), quantity: z.number().int().positive() })).min(1),
-});
-
-export const createOrderResponseSchema = z.object({
-  orderId: z.uuid(),
-  status: orderStatusesSchema,
-});
-
 export const createOrderRouteSchema = {
   headers: z.object({ "x-idempotency-key": z.uuid() }),
-  body: createOrderBodySchema,
+  body: z.object({
+    customerId: z.uuid(),
+    items: z.array(z.object({ productId: z.uuid(), quantity: z.number().int().positive() })).min(1),
+  }),
   response: {
-    201: createOrderResponseSchema,
-    200: createOrderResponseSchema,
+    201: z.object({ orderId: z.uuid(), status: orderStatusesSchema }),
+    200: z.object({ orderId: z.uuid(), status: orderStatusesSchema }),
     400: apiErrorSchema,
   },
   detail: {
