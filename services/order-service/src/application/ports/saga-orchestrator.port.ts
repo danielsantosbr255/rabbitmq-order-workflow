@@ -1,15 +1,5 @@
-export interface StartOrderSagaInput {
-  orderId: string;
-  customerId: string;
-  totalAmountCents: number;
-  items: { productId: string; quantity: number; unitPriceCents: number }[];
-  idempotencyKey: string;
-}
-
-export interface StartOrderSagaResult {
-  isNew: boolean;
-}
+import type { OrderEntity } from "../../domain/entities/order.entity.js";
 
 export interface ISagaOrchestrator {
-  startOrderSaga(input: StartOrderSagaInput): Promise<StartOrderSagaResult>;
+  startOrderSaga(order: OrderEntity, idempotencyKey: string): Promise<void>;
 }

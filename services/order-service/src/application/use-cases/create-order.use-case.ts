@@ -1,5 +1,7 @@
 import { OrderEntity } from "../../domain/entities/order.entity.js";
+import { IdempotencyConflictError } from "../../domain/exceptions/domain.errors.js";
 import type { CreateOrderInputDTO, CreateOrderOutputDTO } from "../dtos/create-order.dto.js";
+import type { IOrderRepository } from "../ports/order-repository.port.js";
 import type { IProductCatalog } from "../ports/product-catalog.port.js";
 import type { ISagaOrchestrator } from "../ports/saga-orchestrator.port.js";
 
@@ -7,6 +9,7 @@ export class CreateOrderUseCase {
   constructor(
     private readonly productCatalog: IProductCatalog,
     private readonly sagaOrchestrator: ISagaOrchestrator,
+    private readonly orderRepository: IOrderRepository,
   ) {}
 
   async execute(input: CreateOrderInputDTO): Promise<CreateOrderOutputDTO> {
@@ -17,22 +20,21 @@ export class CreateOrderUseCase {
       }),
     );
 
-    // Domain validation happens here (fail-fast before touching Temporal)
     const order = OrderEntity.create({ customerId: input.customerId, items: itemsWithPrices });
 
-    // Serialize entity data and start workflow — DB persistence happens inside the workflow
-    const result = await this.sagaOrchestrator.startOrderSaga({
-      orderId: order.id,
-      customerId: order.customerId,
-      totalAmountCents: order.totalAmount.cents,
-      items: order.items.map(i => ({
-        productId: i.productId,
-        quantity: i.quantity,
-        unitPriceCents: i.unitPrice.cents,
-      })),
-      idempotencyKey: input.idempotencyKey,
-    });
+    try {
+      await this.sagaOrchestrator.startOrderSaga(order, input.idempotencyKey);
+    } catch (error) {
+      if (error instanceof IdempotencyConflictError) {
+        const existingOrder = await this.orderRepository.findByIdempotencyKey(input.idempotencyKey);
+        if (existingOrder) {
+          return { orderId: existingOrder.id, status: existingOrder.status, isNew: false };
+        }
+        throw new Error("Order creation is in progress but not yet committed to database. Please retry in a moment.");
+      }
+      throw error;
+    }
 
-    return { orderId: order.id, status: "ACCEPTED", isNew: result.isNew };
+    return { orderId: order.id, status: "ACCEPTED", isNew: true };
   }
 }

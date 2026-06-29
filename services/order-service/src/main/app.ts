@@ -72,7 +72,7 @@ export const buildApp = async () => {
 
   const repository = new DrizzleOrdersRepository(db);
   const productCatalog = new MockProductCatalogAdapter();
-  const createOrderUseCase = new CreateOrderUseCase(productCatalog, sagaAdapter);
+  const createOrderUseCase = new CreateOrderUseCase(productCatalog, sagaAdapter, repository);
   const getOrderUseCase = new GetOrderUseCase(repository);
   const controller = new OrderController(createOrderUseCase, getOrderUseCase);
 

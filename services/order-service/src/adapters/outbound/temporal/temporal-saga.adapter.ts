@@ -1,9 +1,7 @@
 import { Client, Connection, WorkflowExecutionAlreadyStartedError, WorkflowIdReusePolicy } from "@temporalio/client";
-import type {
-  ISagaOrchestrator,
-  StartOrderSagaInput,
-  StartOrderSagaResult,
-} from "../../../application/ports/saga-orchestrator.port.js";
+import type { ISagaOrchestrator } from "../../../application/ports/saga-orchestrator.port.js";
+import type { OrderEntity } from "../../../domain/entities/order.entity.js";
+import { IdempotencyConflictError } from "../../../domain/exceptions/domain.errors.js";
 import { OrderSagaWorkflow } from "./workflows.js";
 
 export class TemporalSagaAdapter implements ISagaOrchestrator {
@@ -15,18 +13,33 @@ export class TemporalSagaAdapter implements ISagaOrchestrator {
     return new TemporalSagaAdapter(client);
   }
 
-  async startOrderSaga(input: StartOrderSagaInput): Promise<StartOrderSagaResult> {
+  static create(client: Client): TemporalSagaAdapter {
+    return new TemporalSagaAdapter(client);
+  }
+
+  async startOrderSaga(order: OrderEntity, idempotencyKey: string): Promise<void> {
     try {
       await this.client.workflow.start(OrderSagaWorkflow, {
-        args: [input],
+        args: [
+          {
+            orderId: order.id,
+            customerId: order.customerId,
+            totalAmountCents: order.totalAmount.cents,
+            items: order.items.map(i => ({
+              productId: i.productId,
+              quantity: i.quantity,
+              unitPriceCents: i.unitPrice.cents,
+            })),
+            idempotencyKey,
+          },
+        ],
         taskQueue: "order-saga-task-queue",
-        workflowId: `order-saga-${input.orderId}`,
+        workflowId: `order-saga-${idempotencyKey}`,
         workflowIdReusePolicy: WorkflowIdReusePolicy.REJECT_DUPLICATE,
       });
-      return { isNew: true };
     } catch (error) {
       if (error instanceof WorkflowExecutionAlreadyStartedError) {
-        return { isNew: false };
+        throw new IdempotencyConflictError(idempotencyKey);
       }
       throw error;
     }
