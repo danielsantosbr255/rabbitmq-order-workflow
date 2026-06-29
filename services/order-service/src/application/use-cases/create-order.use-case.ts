@@ -1,13 +1,10 @@
 import { OrderEntity } from "../../domain/entities/order.entity.js";
-import { IdempotencyConflictError } from "../../domain/exceptions/domain.errors.js";
 import type { CreateOrderInputDTO, CreateOrderOutputDTO } from "../dtos/create-order.dto.js";
-import type { IOrderRepository } from "../ports/order-repository.port.js";
 import type { IProductCatalog } from "../ports/product-catalog.port.js";
 import type { ISagaOrchestrator } from "../ports/saga-orchestrator.port.js";
 
 export class CreateOrderUseCase {
   constructor(
-    private readonly orderRepository: IOrderRepository,
     private readonly productCatalog: IProductCatalog,
     private readonly sagaOrchestrator: ISagaOrchestrator,
   ) {}
@@ -20,22 +17,22 @@ export class CreateOrderUseCase {
       }),
     );
 
+    // Domain validation happens here (fail-fast before touching Temporal)
     const order = OrderEntity.create({ customerId: input.customerId, items: itemsWithPrices });
 
-    try {
-      await this.orderRepository.createWithIdempotency(order, input.idempotencyKey);
-    } catch (error) {
-      if (error instanceof IdempotencyConflictError) {
-        const existingOrder = await this.orderRepository.findByIdempotencyKey(input.idempotencyKey);
-        if (existingOrder) {
-          return { orderId: existingOrder.id, status: existingOrder.status, isNew: false };
-        }
-      }
-      throw error;
-    }
+    // Serialize entity data and start workflow — DB persistence happens inside the workflow
+    const result = await this.sagaOrchestrator.startOrderSaga({
+      orderId: order.id,
+      customerId: order.customerId,
+      totalAmountCents: order.totalAmount.cents,
+      items: order.items.map(i => ({
+        productId: i.productId,
+        quantity: i.quantity,
+        unitPriceCents: i.unitPrice.cents,
+      })),
+      idempotencyKey: input.idempotencyKey,
+    });
 
-    await this.sagaOrchestrator.startOrderSaga(order.id, order.customerId, order.totalAmount.cents);
-
-    return { orderId: order.id, status: order.status, isNew: true };
+    return { orderId: order.id, status: "ACCEPTED", isNew: result.isNew };
   }
 }

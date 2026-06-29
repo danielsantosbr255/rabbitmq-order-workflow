@@ -1,7 +1,15 @@
-/**
- * Outbound port for SAGA orchestration.
- * Implemented by the Temporal adapter.
- */
+export interface StartOrderSagaInput {
+  orderId: string;
+  customerId: string;
+  totalAmountCents: number;
+  items: { productId: string; quantity: number; unitPriceCents: number }[];
+  idempotencyKey: string;
+}
+
+export interface StartOrderSagaResult {
+  isNew: boolean;
+}
+
 export interface ISagaOrchestrator {
-  startOrderSaga(orderId: string, customerId: string, amount: number): Promise<void>;
+  startOrderSaga(input: StartOrderSagaInput): Promise<StartOrderSagaResult>;
 }
