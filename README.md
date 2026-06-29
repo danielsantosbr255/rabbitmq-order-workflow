@@ -20,7 +20,7 @@ O monorepo é dividido em serviços específicos com responsabilidades bem delim
 
 1. **Order Service (Node.js + Fastify + Temporal TS SDK + PostgreSQL):**
    * **Responsabilidade:** Domínio de Pedidos, API HTTP e **Dono do Workflow**. Ele orquestra os demais serviços.
-   * **Fluxo:** Recebe a requisição HTTP `POST /orders`, inicia uma transação no banco local e, imediatamente, aciona o `OrderSagaWorkflow` via cliente do Temporal.
+   * **Fluxo:** Recebe a requisição HTTP `POST /orders`, valida a requisição e cria a entidade de domínio `OrderEntity` em memória (validação fail-fast), e aciona o `OrderSagaWorkflow` via cliente do Temporal. A persistência no banco de dados é garantida de forma assíncrona pela primeira atividade do workflow.
 2. **Payment Service (Go + Temporal Go SDK + PostgreSQL):**
    * **Responsabilidade:** Worker assíncrono de cobrança.
    * **Fluxo:** Expõe as Activities `ProcessPayment` e `RefundPayment` para o Temporal. O orquestrador o aciona no momento exato.
@@ -42,26 +42,32 @@ O Workflow da Saga é descrito em TypeScript, e fica no `order-service`.
 O fluxo pode ser visualizado no Temporal UI, mas no código, ele é um bloco lógico direto:
 
 ```typescript
-export async function OrderSagaWorkflow(orderId: string): Promise<void> {
+export async function OrderSagaWorkflow(input: CreateOrderActivityInput): Promise<void> {
   let paymentProcessed = false;
   let shippingProcessed = false;
 
   try {
-    await payment.ProcessPayment(orderId);
+    // Step 0: Persiste o pedido no banco de dados com idempotência
+    await orderActivities.createOrder(input);
+
+    // Step 1: Processa o pagamento
+    await payment.ProcessPayment(input.orderId, input.customerId, input.totalAmountCents);
     paymentProcessed = true;
-    await updateOrderStatus(orderId, "PAID");
+    await orderActivities.updateOrderStatus(input.orderId, "PAID");
 
-    await shipping.ShipOrder(orderId);
+    // Step 2: Despacha o pedido
+    await shipping.ShipOrder(input.orderId, input.customerId);
     shippingProcessed = true;
-    await updateOrderStatus(orderId, "SHIPPED");
+    await orderActivities.updateOrderStatus(input.orderId, "SHIPPED");
 
-    await notification.NotifyCustomer(orderId, "Your order has been shipped.");
+    // Step 3: Notifica o cliente
+    await notification.NotifyCustomer(input.orderId, "Your order has been shipped successfully.");
   } catch (err) {
     if (paymentProcessed) {
-      await payment.RefundPayment(orderId); // Ação Compensatória
+      await payment.RefundPayment(input.orderId, input.customerId, input.totalAmountCents); // Ação Compensatória
     }
-    await updateOrderStatus(orderId, "CANCELED");
-    await notification.NotifyCustomer(orderId, "Order canceled and refunded.");
+    await orderActivities.updateOrderStatus(input.orderId, "CANCELED");
+    await notification.NotifyCustomer(input.orderId, "Your order was canceled and refunded.");
     throw err;
   }
 }
