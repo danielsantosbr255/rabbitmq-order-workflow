@@ -10,3 +10,11 @@ export interface ShippingActivities {
 export interface NotificationActivities {
   NotifyCustomer(orderId: string, message: string): Promise<void>;
 }
+
+export interface CreateOrderActivityInput {
+  orderId: string;
+  customerId: string;
+  totalAmountCents: number;
+  items: { productId: string; quantity: number; unitPriceCents: number }[];
+  idempotencyKey: string;
+}

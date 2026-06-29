@@ -1,8 +1,13 @@
 import { proxyActivities } from "@temporalio/workflow";
-import type { NotificationActivities, PaymentActivities, ShippingActivities } from "./activities.interfaces.js";
+import type {
+  CreateOrderActivityInput,
+  NotificationActivities,
+  PaymentActivities,
+  ShippingActivities,
+} from "./activities.interfaces.js";
 import type { OrderActivities } from "./activities.js";
 
-const { updateOrderStatus } = proxyActivities<OrderActivities>({
+const orderActivities = proxyActivities<OrderActivities>({
   startToCloseTimeout: "10 seconds",
 });
 
@@ -23,23 +28,26 @@ const notification = proxyActivities<NotificationActivities>({
   taskQueue: "notification-service-task-queue",
 });
 
-export async function OrderSagaWorkflow(orderId: string, customerId: string, amount: number = 100): Promise<void> {
+export async function OrderSagaWorkflow(input: CreateOrderActivityInput): Promise<void> {
   let paymentProcessed = false;
   let shippingProcessed = false;
 
   try {
+    // Step 0: Persist order in database (Temporal guarantees execution)
+    await orderActivities.createOrder(input);
+
     // Step 1: Process Payment
-    await payment.ProcessPayment(orderId, customerId, amount);
+    await payment.ProcessPayment(input.orderId, input.customerId, input.totalAmountCents);
     paymentProcessed = true;
-    await updateOrderStatus(orderId, "PAID");
+    await orderActivities.updateOrderStatus(input.orderId, "PAID");
 
     // Step 2: Ship Order
-    await shipping.ShipOrder(orderId, customerId);
+    await shipping.ShipOrder(input.orderId, input.customerId);
     shippingProcessed = true;
-    await updateOrderStatus(orderId, "SHIPPED");
+    await orderActivities.updateOrderStatus(input.orderId, "SHIPPED");
 
     // Step 3: Notify Customer (Success)
-    await notification.NotifyCustomer(orderId, "Your order has been shipped successfully.");
+    await notification.NotifyCustomer(input.orderId, "Your order has been shipped successfully.");
   } catch (err) {
     // Compensation Logic
     if (shippingProcessed) {
@@ -48,11 +56,11 @@ export async function OrderSagaWorkflow(orderId: string, customerId: string, amo
     }
 
     if (paymentProcessed) {
-      await payment.RefundPayment(orderId, customerId, amount);
+      await payment.RefundPayment(input.orderId, input.customerId, input.totalAmountCents);
     }
 
-    await updateOrderStatus(orderId, "CANCELED");
-    await notification.NotifyCustomer(orderId, "Your order was canceled and refunded.");
+    await orderActivities.updateOrderStatus(input.orderId, "CANCELED");
+    await notification.NotifyCustomer(input.orderId, "Your order was canceled and refunded.");
 
     throw err; // Rethrow to mark workflow as failed, or return to mark as success with compensation.
   }

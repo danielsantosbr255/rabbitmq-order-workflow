@@ -1,5 +1,9 @@
-import { Client, Connection, WorkflowIdReusePolicy } from "@temporalio/client";
-import type { ISagaOrchestrator } from "../../../application/ports/saga-orchestrator.port.js";
+import { Client, Connection, WorkflowExecutionAlreadyStartedError, WorkflowIdReusePolicy } from "@temporalio/client";
+import type {
+  ISagaOrchestrator,
+  StartOrderSagaInput,
+  StartOrderSagaResult,
+} from "../../../application/ports/saga-orchestrator.port.js";
 import { OrderSagaWorkflow } from "./workflows.js";
 
 export class TemporalSagaAdapter implements ISagaOrchestrator {
@@ -11,12 +15,20 @@ export class TemporalSagaAdapter implements ISagaOrchestrator {
     return new TemporalSagaAdapter(client);
   }
 
-  async startOrderSaga(orderId: string, customerId: string, amount: number): Promise<void> {
-    await this.client.workflow.start(OrderSagaWorkflow, {
-      args: [orderId, customerId, amount],
-      taskQueue: "order-saga-task-queue",
-      workflowId: `order-saga-${orderId}`,
-      workflowIdReusePolicy: WorkflowIdReusePolicy.ALLOW_DUPLICATE_FAILED_ONLY,
-    });
+  async startOrderSaga(input: StartOrderSagaInput): Promise<StartOrderSagaResult> {
+    try {
+      await this.client.workflow.start(OrderSagaWorkflow, {
+        args: [input],
+        taskQueue: "order-saga-task-queue",
+        workflowId: `order-saga-${input.orderId}`,
+        workflowIdReusePolicy: WorkflowIdReusePolicy.REJECT_DUPLICATE,
+      });
+      return { isNew: true };
+    } catch (error) {
+      if (error instanceof WorkflowExecutionAlreadyStartedError) {
+        return { isNew: false };
+      }
+      throw error;
+    }
   }
 }
