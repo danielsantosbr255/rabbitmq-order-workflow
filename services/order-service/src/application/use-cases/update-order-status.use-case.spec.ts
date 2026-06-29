@@ -44,6 +44,23 @@ describe("UpdateOrderStatusUseCase", () => {
     expect(repo.save).toHaveBeenCalledWith(order);
   });
 
+  it("should mark order as SHIPPED", async () => {
+    const repo = createMockRepository();
+    const order = OrderEntity.create({
+      customerId: crypto.randomUUID(),
+      items: [{ productId: crypto.randomUUID(), quantity: 1, unitPrice: 1500 }],
+    });
+    // Status can only transition to SHIPPED if it is currently PAID
+    order.markAsPaid();
+    (repo.findById as ReturnType<typeof vi.fn>).mockResolvedValueOnce(order);
+
+    const useCase = new UpdateOrderStatusUseCase(repo);
+    const result = await useCase.execute(order.id, "SHIPPED");
+
+    expect(result.status).toBe("SHIPPED");
+    expect(repo.save).toHaveBeenCalledWith(order);
+  });
+
   it("should throw ResourceNotFoundError when order not found", async () => {
     const repo = createMockRepository();
     const useCase = new UpdateOrderStatusUseCase(repo);
