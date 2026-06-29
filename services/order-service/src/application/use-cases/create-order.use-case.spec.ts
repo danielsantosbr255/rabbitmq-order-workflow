@@ -1,39 +1,22 @@
 import { describe, expect, it, vi } from "vitest";
-import { OrderEntity } from "../../domain/entities/order.entity.js";
-import { IdempotencyConflictError } from "../../domain/exceptions/domain.errors.js";
-import type { IOrderRepository } from "../ports/order-repository.port.js";
 import type { IProductCatalog } from "../ports/product-catalog.port.js";
 import type { ISagaOrchestrator } from "../ports/saga-orchestrator.port.js";
 import { CreateOrderUseCase } from "./create-order.use-case.js";
 
-function createMockRepository(): IOrderRepository {
-  return {
-    save: vi.fn(async order => order),
-    createWithIdempotency: vi.fn(async () => {}),
-    findByIdempotencyKey: vi.fn(async () => null),
-    findById: vi.fn(async () => null),
-  };
-}
-
 function createMockCatalog(): IProductCatalog {
-  return {
-    getProductPrice: vi.fn(async () => 5000),
-  };
+  return { getProductPrice: vi.fn(async () => 5000) };
 }
 
 function createMockSagaOrchestrator(): ISagaOrchestrator {
-  return {
-    startOrderSaga: vi.fn(async () => {}),
-  };
+  return { startOrderSaga: vi.fn(async () => ({ isNew: true })) };
 }
 
 describe("CreateOrderUseCase", () => {
-  it("should create an order, persist it, and start the SAGA", async () => {
-    const repo = createMockRepository();
+  it("should validate domain, serialize, and start the SAGA workflow", async () => {
     const catalog = createMockCatalog();
     const saga = createMockSagaOrchestrator();
 
-    const useCase = new CreateOrderUseCase(repo, catalog, saga);
+    const useCase = new CreateOrderUseCase(catalog, saga);
 
     const result = await useCase.execute({
       customerId: crypto.randomUUID(),
@@ -43,39 +26,50 @@ describe("CreateOrderUseCase", () => {
 
     expect(result.isNew).toBe(true);
     expect(result.orderId).toBeDefined();
-    expect(result.status).toBe("PENDING");
+    expect(result.status).toBe("ACCEPTED");
 
     expect(catalog.getProductPrice).toHaveBeenCalledOnce();
-    expect(repo.createWithIdempotency).toHaveBeenCalledOnce();
-    expect(saga.startOrderSaga).toHaveBeenCalledWith(result.orderId, expect.any(String), 10000); // 2 * 5000
+    expect(saga.startOrderSaga).toHaveBeenCalledWith(
+      expect.objectContaining({
+        orderId: result.orderId,
+        totalAmountCents: 10000, // 2 * 5000
+      }),
+    );
   });
 
-  it("should return existing order on idempotency conflict", async () => {
-    const repo = createMockRepository();
+  it("should return isNew false when workflow already exists (idempotency)", async () => {
     const catalog = createMockCatalog();
     const saga = createMockSagaOrchestrator();
+    (saga.startOrderSaga as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ isNew: false });
 
-    const existingOrder = OrderEntity.create({
-      customerId: crypto.randomUUID(),
-      items: [{ productId: crypto.randomUUID(), quantity: 1, unitPrice: 5000 }],
-    });
-
-    const idempotencyKey = crypto.randomUUID();
-    (repo.createWithIdempotency as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
-      new IdempotencyConflictError(idempotencyKey),
-    );
-    (repo.findByIdempotencyKey as ReturnType<typeof vi.fn>).mockResolvedValueOnce(existingOrder);
-
-    const useCase = new CreateOrderUseCase(repo, catalog, saga);
+    const useCase = new CreateOrderUseCase(catalog, saga);
 
     const result = await useCase.execute({
       customerId: crypto.randomUUID(),
       items: [{ productId: crypto.randomUUID(), quantity: 1 }],
-      idempotencyKey,
+      idempotencyKey: crypto.randomUUID(),
     });
 
     expect(result.isNew).toBe(false);
-    expect(result.orderId).toBe(existingOrder.id);
+    expect(result.status).toBe("ACCEPTED");
+    expect(saga.startOrderSaga).toHaveBeenCalledOnce();
+  });
+
+  it("should fail fast on invalid domain data before touching Temporal", async () => {
+    const catalog = createMockCatalog();
+    const saga = createMockSagaOrchestrator();
+
+    const useCase = new CreateOrderUseCase(catalog, saga);
+
+    await expect(
+      useCase.execute({
+        customerId: "not-a-uuid",
+        items: [{ productId: crypto.randomUUID(), quantity: 1 }],
+        idempotencyKey: crypto.randomUUID(),
+      }),
+    ).rejects.toThrow("customerId must be a valid UUID");
+
+    // Temporal should never be called if domain validation fails
     expect(saga.startOrderSaga).not.toHaveBeenCalled();
   });
 });
