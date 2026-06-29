@@ -1,21 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
+import { waitForOrderStatus } from "../utils/wait.js";
 
 const API_URL = "http://localhost:3001";
-
-// Helper to poll for order status changes
-async function waitForOrderStatus(orderId: string, expectedStatus: string, maxAttempts = 15) {
-  for (let i = 0; i < maxAttempts; i++) {
-    const res = await fetch(`${API_URL}/orders/${orderId}`);
-    if (res.ok) {
-      const order = await res.json();
-      if (order.status === expectedStatus) {
-        return order;
-      }
-    }
-    await new Promise(resolve => setTimeout(resolve, 1000));
-  }
-  throw new Error(`Timeout waiting for order ${orderId} to reach status ${expectedStatus}`);
-}
 
 describe("SAGA E2E Tests", () => {
   beforeAll(async () => {
@@ -52,7 +38,11 @@ describe("SAGA E2E Tests", () => {
     expect(status).toBe("ACCEPTED");
 
     // Poll until Temporal orchestration completes
-    const completedOrder = await waitForOrderStatus(orderId, "SHIPPED");
+    const fetchOrderFn = async () => {
+      const res = await fetch(`${API_URL}/orders/${orderId}`);
+      return res.ok ? await res.json() : null;
+    };
+    const completedOrder = await waitForOrderStatus(fetchOrderFn, "SHIPPED");
     expect(completedOrder.status).toBe("SHIPPED");
   });
 
@@ -76,7 +66,11 @@ describe("SAGA E2E Tests", () => {
     const { orderId } = await createRes.json();
 
     // Poll until Temporal orchestration completes
-    const completedOrder = await waitForOrderStatus(orderId, "CANCELED");
+    const fetchOrderFn = async () => {
+      const res = await fetch(`${API_URL}/orders/${orderId}`);
+      return res.ok ? await res.json() : null;
+    };
+    const completedOrder = await waitForOrderStatus(fetchOrderFn, "CANCELED");
     expect(completedOrder.status).toBe("CANCELED");
   });
 
@@ -101,7 +95,62 @@ describe("SAGA E2E Tests", () => {
 
     // Poll until Temporal orchestration completes
     // Note: the order might momentarily be "PAID" but will eventually be "CANCELED" due to refund
-    const completedOrder = await waitForOrderStatus(orderId, "CANCELED");
+    const fetchOrderFn = async () => {
+      const res = await fetch(`${API_URL}/orders/${orderId}`);
+      return res.ok ? await res.json() : null;
+    };
+    const completedOrder = await waitForOrderStatus(fetchOrderFn, "CANCELED");
     expect(completedOrder.status).toBe("CANCELED");
+  });
+
+  it("Scenario 4: Idempotency - Same idempotency key should return existing order", async () => {
+    const customerId = "00000000-0000-4000-8000-000000000003";
+    const idempotencyKey = crypto.randomUUID();
+
+    // First request
+    const createRes1 = await fetch(`${API_URL}/orders`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-idempotency-key": idempotencyKey,
+      },
+      body: JSON.stringify({
+        customerId,
+        items: [{ productId: "d84764d9-26e6-48eb-aa66-8d0c303cbb97", quantity: 1 }],
+      }),
+    });
+
+    expect(createRes1.status).toBe(202);
+    const body1 = await createRes1.json();
+    expect(body1.orderId).toBeDefined();
+
+    // Poll until Temporal orchestration completes
+    const fetchOrderFn = async () => {
+      const res = await fetch(`${API_URL}/orders/${body1.orderId}`);
+      return res.ok ? await res.json() : null;
+    };
+    const completedOrder = await waitForOrderStatus(fetchOrderFn, "SHIPPED");
+    expect(completedOrder.status).toBe("SHIPPED");
+
+    // Second request with SAME idempotency key
+    const createRes2 = await fetch(`${API_URL}/orders`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-idempotency-key": idempotencyKey,
+      },
+      body: JSON.stringify({
+        customerId,
+        items: [{ productId: "d84764d9-26e6-48eb-aa66-8d0c303cbb97", quantity: 1 }],
+      }),
+    });
+
+    // Should return 200 OK
+    expect(createRes2.status).toBe(200);
+    const body2 = await createRes2.json();
+
+    // Should return the exact same orderId and its current status
+    expect(body2.orderId).toBe(body1.orderId);
+    expect(body2.status).toBe("SHIPPED");
   });
 });
