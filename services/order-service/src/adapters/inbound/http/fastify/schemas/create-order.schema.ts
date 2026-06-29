@@ -8,7 +8,7 @@ export const createOrderRouteSchema = {
     items: z.array(z.object({ productId: z.uuid(), quantity: z.number().int().positive() })).min(1),
   }),
   response: {
-    201: z.object({ orderId: z.uuid(), status: orderStatusesSchema }),
+    202: z.object({ orderId: z.uuid(), status: z.literal("ACCEPTED") }),
     200: z.object({ orderId: z.uuid(), status: orderStatusesSchema }),
     400: apiErrorSchema,
   },

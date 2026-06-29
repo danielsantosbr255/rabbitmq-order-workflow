@@ -15,7 +15,7 @@ export class OrderController {
       idempotencyKey: headers["x-idempotency-key"],
     });
 
-    const statusCode = result.isNew ? (201 as const) : (200 as const);
+    const statusCode = result.isNew ? (202 as const) : (200 as const);
     return {
       statusCode,
       body: { orderId: result.orderId, status: result.status },

@@ -18,10 +18,7 @@ import { GetOrderUseCase } from "../application/use-cases/get-order.use-case.js"
 import { env } from "./config/env.js";
 
 export const buildApp = async () => {
-  const pool = new pg.Pool({
-    connectionString: env.DATABASE_URL,
-    connectionTimeoutMillis: 3000,
-  });
+  const pool = new pg.Pool({ connectionString: env.DATABASE_URL, connectionTimeoutMillis: 3000 });
 
   try {
     const client = await pool.connect();
@@ -75,7 +72,7 @@ export const buildApp = async () => {
 
   const repository = new DrizzleOrdersRepository(db);
   const productCatalog = new MockProductCatalogAdapter();
-  const createOrderUseCase = new CreateOrderUseCase(repository, productCatalog, sagaAdapter);
+  const createOrderUseCase = new CreateOrderUseCase(productCatalog, sagaAdapter);
   const getOrderUseCase = new GetOrderUseCase(repository);
   const controller = new OrderController(createOrderUseCase, getOrderUseCase);
 
