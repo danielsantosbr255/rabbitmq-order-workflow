@@ -17,17 +17,5 @@ export function toDomain(row: OrderRow): OrderEntity {
 }
 
 export function toPersistence(entity: OrderEntity): OrderInsert {
-  return {
-    id: entity.id,
-    customerId: entity.customerId,
-    items: entity.items.map(item => ({
-      productId: item.productId,
-      quantity: item.quantity,
-      unitPrice: item.unitPrice.cents,
-    })),
-    totalAmount: entity.totalAmount.cents,
-    status: entity.status,
-    createdAt: entity.createdAt,
-    updatedAt: entity.updatedAt,
-  };
+  return entity.toSnapshot();
 }

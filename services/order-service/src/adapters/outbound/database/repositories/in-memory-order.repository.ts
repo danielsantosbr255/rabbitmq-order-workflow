@@ -1,23 +1,14 @@
 import type { IOrderRepository } from "../../../../application/ports/order-repository.port.js";
+import type { OrderSnapshot } from "../../../../domain/entities/order.entity.js";
 import { OrderEntity } from "../../../../domain/entities/order.entity.js";
 import { IdempotencyConflictError } from "../../../../domain/exceptions/domain.errors.js";
 
-interface StoredOrder {
-  id: string;
-  customerId: string;
-  items: { productId: string; quantity: number; unitPrice: number }[];
-  totalAmount: number;
-  status: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
 export class InMemoryOrdersRepository implements IOrderRepository {
-  private readonly orders: StoredOrder[] = [];
+  private readonly orders: OrderSnapshot[] = [];
   private readonly idempotencyKeys = new Map<string, string>();
 
   async save(order: OrderEntity): Promise<OrderEntity> {
-    const data = this.entityToStoredOrder(order);
+    const data = order.toSnapshot();
     const existingIndex = this.orders.findIndex(o => o.id === order.id);
     if (existingIndex > -1) {
       this.orders[existingIndex] = data;
@@ -46,21 +37,5 @@ export class InMemoryOrdersRepository implements IOrderRepository {
     const data = this.orders.find(o => o.id === id);
     if (!data) return null;
     return OrderEntity.restore(data);
-  }
-
-  private entityToStoredOrder(entity: OrderEntity): StoredOrder {
-    return {
-      id: entity.id,
-      customerId: entity.customerId,
-      items: entity.items.map(item => ({
-        productId: item.productId,
-        quantity: item.quantity,
-        unitPrice: item.unitPrice.cents,
-      })),
-      totalAmount: entity.totalAmount.cents,
-      status: entity.status,
-      createdAt: entity.createdAt,
-      updatedAt: entity.updatedAt,
-    };
   }
 }
