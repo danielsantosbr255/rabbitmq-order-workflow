@@ -74,7 +74,8 @@ describe("OrderEntity", () => {
           customerId: crypto.randomUUID(),
           items: [{ productId: crypto.randomUUID(), quantity: 1, unitPrice: 100 }],
           totalAmount: 100,
-          status: "INVALID_STATUS",
+          // biome-ignore lint/suspicious/noExplicitAny: testing runtime validation
+          status: "INVALID_STATUS" as any,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         }),

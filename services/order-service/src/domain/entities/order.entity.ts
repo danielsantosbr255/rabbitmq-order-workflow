@@ -15,12 +15,12 @@ type CreateOrderInput = {
   items: { productId: string; quantity: number; unitPrice: number }[];
 };
 
-type RestoreOrderInput = {
+export type OrderSnapshot = {
   id: string;
   customerId: string;
   items: { productId: string; quantity: number; unitPrice: number }[];
   totalAmount: number;
-  status: string;
+  status: OrderStatus;
   createdAt: string;
   updatedAt: string;
 };
@@ -70,7 +70,7 @@ export class OrderEntity {
     return new OrderEntity(id, input.customerId, items, totalAmount, "PENDING", now, now);
   }
 
-  static restore(input: RestoreOrderInput): OrderEntity {
+  static restore(input: OrderSnapshot): OrderEntity {
     if (!isUUID(input.id)) {
       throw new Error(`Cannot restore OrderEntity with invalid id: ${String(input.id)}`);
     }
@@ -157,5 +157,21 @@ export class OrderEntity {
     if (this._status === "CANCELED" || this._status === "DELIVERED") return;
     this._status = "CANCELED";
     this._updatedAt = new Date().toISOString();
+  }
+
+  toSnapshot(): OrderSnapshot {
+    return {
+      id: this.id,
+      customerId: this.customerId,
+      items: this.items.map(item => ({
+        productId: item.productId,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice.cents,
+      })),
+      totalAmount: this.totalAmount.cents,
+      status: this.status,
+      createdAt: this.createdAt,
+      updatedAt: this.updatedAt,
+    };
   }
 }
