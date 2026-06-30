@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { setupTestEnvironment, type IntegrationTestEnvironment } from "../utils/setup.js";
+import { type IntegrationTestEnvironment, setupTestEnvironment } from "../utils/setup.js";
 import { waitForOrderStatus } from "../utils/wait.js";
 
 describe("OrderService E2E Integration (Testcontainers)", () => {
